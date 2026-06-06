@@ -16,6 +16,7 @@ from core.views import UserRegistrationView, UserViewSet, FreelanceViewSet
 
 router = DefaultRouter()
 
+
 router.register(r'usuarios', UserViewSet, basename='usuarios')
 router.register(r'freelances', FreelanceViewSet, basename='freelances')
 
