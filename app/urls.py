@@ -12,7 +12,7 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 
-from core.views import UserRegistrationView, UserViewSet, FreelanceViewSet
+from core.views import UserRegistrationView, UserViewSet, FreelanceViewSet, CompanyRegistrationView
 
 router = DefaultRouter()
 
@@ -37,9 +37,9 @@ urlpatterns = [
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
-    # Registro de usuários
+    
     path('api/registro/', UserRegistrationView.as_view(), name='user_registration'),
-    # API
+    path('api/registro/empresa/', CompanyRegistrationView.as_view()),
     path('api/', include(router.urls)),
 
 ]

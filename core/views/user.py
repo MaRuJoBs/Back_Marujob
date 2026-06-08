@@ -8,6 +8,7 @@ from rest_framework.viewsets import ModelViewSet
 
 from core.models import User
 from core.serializers import UserRegistrationSerializer, UserSerializer
+from django.contrib.auth.models import Group
 
 
 class UserViewSet(ModelViewSet):
@@ -34,3 +35,9 @@ class UserRegistrationView(CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+
+        grupo, _ = Group.objects.get_or_create(name='Usuario')
+        user.groups.add(grupo)
