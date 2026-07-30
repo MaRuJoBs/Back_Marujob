@@ -5,6 +5,7 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
+
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
@@ -32,8 +33,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    #'cloudinary_storage',
-    #'cloudinary',
+    'cloudinary_storage',
+    'cloudinary',
     'corsheaders',
     'django_extensions',
     'django_filters',
@@ -108,27 +109,31 @@ USE_TZ = True
 # Configurações de arquivos estáticos
 STATIC_URL = 'static/'
 
-# Configurações de arquivos de mídia (App Uploader)
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# Configurações de arquivos de mídia
+MEDIA_URL = "/media/"
 FILE_UPLOAD_PERMISSIONS = 0o640
 
-# Configurações específicas para desenvolvimento, migração e produção
-if MODE == 'DEVELOPMENT':
-    MY_IP = os.getenv('MY_IP', '127.0.0.1')
-    MEDIA_URL = '/media/'
-else:
-    MEDIA_URL = '/media/'
-    CLOUDINARY_URL = os.getenv('CLOUDINARY_URL')
-    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+if MODE == "DEVELOPMENT":
+    MY_IP = os.getenv("MY_IP", "127.0.0.1")
+
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
+
+elif MODE in ("MIGRATE", "PRODUCTION"):
+    MEDIA_URL = "/media/"
+
+    STATIC_ROOT = BASE_DIR / "staticfiles"
+
     STORAGES = {
-        'default': {
-            'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+        "default": {
+            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
         },
-        'staticfiles': {
-            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+else:
+    raise ValueError(f"MODE inválido: {MODE}")
 
 # Tipo padrão de campo para chaves primárias
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
