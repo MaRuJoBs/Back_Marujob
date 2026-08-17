@@ -5,7 +5,6 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
-
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
@@ -111,8 +110,16 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Configurações de arquivos de mídia
+# Configurações de arquivos de mídia
 MEDIA_URL = "/media/"
 FILE_UPLOAD_PERMISSIONS = 0o640
+
+# Configurações do Cloudinary
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+}
 
 if MODE == "DEVELOPMENT":
     MY_IP = os.getenv("MY_IP", "127.0.0.1")
@@ -131,6 +138,7 @@ elif MODE in ("MIGRATE", "PRODUCTION"):
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+
 else:
     raise ValueError(f"MODE inválido: {MODE}")
 
