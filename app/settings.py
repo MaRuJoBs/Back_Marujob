@@ -108,6 +108,7 @@ USE_TZ = True
 
 # Configurações de arquivos estáticos
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Configurações de arquivos de mídia
 MEDIA_URL = "/media/"
@@ -121,8 +122,6 @@ if MODE == "DEVELOPMENT":
 
 elif MODE in ("MIGRATE", "PRODUCTION"):
     MEDIA_URL = "/media/"
-
-    STATIC_ROOT = BASE_DIR / "staticfiles"
 
     STORAGES = {
         "default": {
