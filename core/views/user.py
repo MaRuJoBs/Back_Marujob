@@ -54,6 +54,94 @@ class GoogleLoginView(CreateAPIView):
 
     def post(self, request):
         token = request.data.get('credential')
+        tipo = request.data.get('tipo')
+        cadastro = request.data.get('cadastro', False)
+
+        if not token:
+            return Response(
+                {'detail': 'Token do Google não informado.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if tipo not in ['usuario', 'empresa']:
+            return Response(
+                {'detail': 'Tipo de usuário inválido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            google_user = id_token.verify_oauth2_token(
+                token,
+                google_requests.Request(),
+                os.getenv('GOOGLE_CLIENT_ID'),
+            )
+
+        except ValueError:
+            return Response(
+                {'detail': 'Token do Google inválido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        email = google_user.get('email')
+        name = google_user.get('name')
+        email_verified = google_user.get('email_verified', False)
+
+        if not email or not email_verified:
+            return Response(
+                {'detail': 'O e-mail da conta Google não foi verificado.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verifica se o email já existe
+        user = User.objects.filter(email=email).first()
+
+        # CADASTRO
+        if cadastro:
+            if user:
+                return Response(
+                    {'email': ['Este email já está cadastrado.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user = User.objects.create_user(
+                email=email,
+                name=name,
+            )
+
+            user.set_unusable_password()
+            user.save()
+
+            if tipo == 'empresa':
+                grupo, _ = Group.objects.get_or_create(name='Empresa')
+            else:
+                grupo, _ = Group.objects.get_or_create(name='Usuário')
+
+            user.groups.add(grupo)
+
+        # LOGIN
+        else:
+            if not user:
+                return Response(
+                    {'detail': 'Esta conta Google ainda não está cadastrada.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response(
+            {
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'user': UserSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+    """Login/cadastro utilizando uma conta Google."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = request.data.get('credential')
 
         if not token:
             return Response(
