@@ -1,3 +1,3 @@
-from .user import UserRegistrationView, UserViewSet
+from .user import UserRegistrationView, UserViewSet, GoogleLoginView
 
 from .freelance import FreelanceViewSet 
