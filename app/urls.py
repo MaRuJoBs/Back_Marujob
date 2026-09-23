@@ -16,16 +16,19 @@ from rest_framework_simplejwt.views import (
 
 from core.views import (
     FreelanceViewSet,
+    PortfolioViewSet,
     UserRegistrationView,
     UserViewSet,
     GoogleLoginView,
+    DefinirSenhaView,
+    TrocarSenhaView
 )
 
 router = DefaultRouter()
 
 router.register(r'usuarios', UserViewSet, basename='usuarios')
 router.register(r'freelances', FreelanceViewSet, basename='freelances')
-
+router.register(r'portfolios', PortfolioViewSet, basename='portfolios')
 urlpatterns = [
     path('admin/', admin.site.urls),
     # OpenAPI 3
@@ -45,6 +48,8 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('api/auth/google/', GoogleLoginView.as_view(), name='google_login'),
+    path('api/auth/definir-senha/', DefinirSenhaView.as_view(), name='definir_senha'),
+    path('api/auth/trocar-senha/', TrocarSenhaView.as_view(), name='trocar_senha'),
     # Registro de usuários
     path('api/registro/', UserRegistrationView.as_view(), name='user_registration'),
     # API
