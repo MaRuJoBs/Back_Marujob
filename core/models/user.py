@@ -40,18 +40,95 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     """User model in the system."""
 
-    email = models.EmailField(max_length=255, unique=True, verbose_name=_('email'), help_text=_('Email'))
-    google_id = models.CharField(
-    max_length=255,
-    unique=True,
-    null=True,
-    blank=True,
-)
-    name = models.CharField(max_length=255, blank=True, null=True, verbose_name=_('name'), help_text=_('Username'))
-    profile_image = models.ImageField(upload_to='users/', null=True, blank=True)
-    is_active = models.BooleanField(
-        default=True, verbose_name=_('Usuário está ativo'), help_text=_('Indica que este usuário está ativo.')
+    email = models.EmailField(
+        max_length=255,
+        unique=True,
+        verbose_name=_('email'),
+        help_text=_('Email'),
     )
+
+    google_id = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+    )
+
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name=_('name'),
+        help_text=_('Username'),
+    )
+
+    profile_image = models.ImageField(
+        upload_to='users/',
+        null=True,
+        blank=True,
+    )
+
+    profissao = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+    )
+
+    localizacao = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+    )
+    latitude = models.FloatField(
+        null=True,
+        blank=True,
+    )
+
+    longitude = models.FloatField(
+        null=True,
+        blank=True,
+    )
+
+    geolocation_accuracy = models.FloatField(
+        null=True,
+        blank=True,
+    )
+
+    geolocation_timestamp = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    sobre = models.TextField(
+        blank=True,
+        default='',
+    )
+
+    telefone = models.CharField(
+        max_length=30,
+        blank=True,
+        default='',
+    )
+
+    habilidades = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    perfil_configurado = models.BooleanField(
+        default=False,
+    )
+
+    aviso_perfil_dispensado = models.BooleanField(
+        default=False,
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name=_('Usuário está ativo'),
+        help_text=_('Indica que este usuário está ativo.'),
+    )
+
     is_staff = models.BooleanField(
         default=False,
         verbose_name=_('Usuário é da equipe'),
@@ -64,7 +141,5 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = []
 
     class Meta:
-        """Meta options for the model."""
-
         verbose_name = 'Usuário'
         verbose_name_plural = 'Usuários'

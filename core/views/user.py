@@ -17,29 +17,56 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.models import User
-from core.serializers import UserRegistrationSerializer, UserSerializer
+from core.serializers import (
+    UserRegistrationSerializer,
+    UserSerializer,
+    UserProfileSerializer,
+)
 
 
-class UserViewSet(ModelViewSet):
+from rest_framework.viewsets import ReadOnlyModelViewSet
+
+
+class UserViewSet(ReadOnlyModelViewSet):
     queryset = User.objects.all().order_by('id')
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     @extend_schema(
         summary="Dados do usuário autenticado",
-        description="Retorna os dados do usuário autenticado.",
-        responses={200: UserSerializer, 401: None},
+        description="Retorna ou atualiza os dados do usuário autenticado.",
+        responses={200: UserProfileSerializer, 401: None},
     )
     @action(
         detail=False,
-        methods=['get'],
+        methods=['get', 'patch'],
         permission_classes=[IsAuthenticated],
     )
     def me(self, request):
-        """Retorna os dados do usuário autenticado."""
+        """Retorna ou atualiza os dados do usuário autenticado."""
         user = request.user
-        serializer = self.get_serializer(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        if request.method == 'PATCH':
+            serializer = UserProfileSerializer(
+                user,
+                data=request.data,
+                partial=True,
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK,
+            )
+
+        serializer = UserProfileSerializer(user)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class UserRegistrationView(CreateAPIView):

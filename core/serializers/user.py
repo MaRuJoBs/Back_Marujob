@@ -37,3 +37,79 @@ class UserRegistrationSerializer(ModelSerializer):
         user.groups.add(grupo)
         
         return user
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'name',
+            'profile_image',
+            'profissao',
+            'localizacao',
+            'latitude',
+            'longitude',
+            'geolocation_accuracy',
+            'geolocation_timestamp',
+            'sobre',
+            'telefone',
+            'habilidades',
+            'perfil_configurado',
+            'aviso_perfil_dispensado',
+        ]
+        read_only_fields = [
+            'id',
+            'email',
+            'perfil_configurado',
+        ]
+
+    
+    def validate(self, attrs):
+        latitude = attrs.get(
+            'latitude',
+            self.instance.latitude if self.instance else None
+        )
+
+        longitude = attrs.get(
+            'longitude',
+            self.instance.longitude if self.instance else None
+        )
+
+        if (latitude is None) != (longitude is None):
+            raise serializers.ValidationError({
+                'localizacao': (
+                    'Latitude e longitude devem ser informadas juntas.'
+                )
+            })
+
+        if latitude is not None and not -90 <= latitude <= 90:
+            raise serializers.ValidationError({
+                'latitude': 'Latitude inválida.'
+            })
+
+        if longitude is not None and not -180 <= longitude <= 180:
+            raise serializers.ValidationError({
+                'longitude': 'Longitude inválida.'
+            })
+
+        return attrs
+
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        campos_obrigatorios = [
+            instance.name,
+            instance.profissao,
+            instance.localizacao,
+            instance.sobre,
+            instance.telefone,
+        ]
+        instance.perfil_configurado = all(
+            campo and str(campo).strip() for campo in campos_obrigatorios
+        )
+
+        instance.save()
+        return instance
