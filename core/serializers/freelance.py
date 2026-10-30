@@ -1,4 +1,4 @@
-from rest_framework.serializers import ModelSerializer
+from rest_framework.serializers import ModelSerializer, ValidationError
 
 from core.models import Freelance
 
@@ -8,3 +8,8 @@ class FreelanceSerializer(ModelSerializer):
         model = Freelance
         fields = '__all__'
         read_only_fields = ['empresa']
+
+    def validate_preco(self, value):
+        if value < 0:
+            raise ValidationError('O preço não pode ser negativo.')
+        return value

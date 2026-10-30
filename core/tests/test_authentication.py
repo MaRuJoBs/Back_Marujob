@@ -416,7 +416,7 @@ class ProductionSettingsTests(SimpleTestCase):
             for key, value in environment.items():
                 if value is None:
                     os.environ.pop(key, None)
-            return runpy.run_path(str(Path(__file__).resolve().parent.parent / 'app' / 'settings.py'))
+            return runpy.run_path(str(Path(__file__).resolve().parents[2] / 'app' / 'settings.py'))
 
     def test_production_explicit_configuration(self):
         with patch('builtins.print') as output:
