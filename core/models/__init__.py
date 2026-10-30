@@ -3,3 +3,4 @@ from .freelance import Freelance
 from .portfolio import Portfolio
 from .favorito import Favorito
 from .candidatura import Candidatura
+from .notificacao import Notificacao

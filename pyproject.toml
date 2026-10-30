@@ -26,6 +26,7 @@ dependencies = [
   'uvicorn>=0.29.0',
   'whitenoise[brotli]>=6.6.0',
   "google-auth>=2.57.1",
+  "phonenumbers<10,>=9.0",
 ]
 requires-python = ">=3.10"
 license = { text = "MIT" }

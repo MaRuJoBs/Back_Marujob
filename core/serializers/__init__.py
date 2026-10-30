@@ -3,3 +3,4 @@ from .freelance import FreelanceSerializer
 from .portfolio import PortfolioSerializer
 from .favorito import FavoritoSerializer
 from .candidatura import CandidaturaCreateSerializer, CandidaturaSerializer, CandidatoProfissionalSerializer
+from .notificacao import NotificacaoSerializer

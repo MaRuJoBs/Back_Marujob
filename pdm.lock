@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:3d86d9aec92d2411320c80b1623a04c086ec16097bcddf9c7c4468818cceced9"
+content_hash = "sha256:aa7dd27258d89daa426b768f86b40f1618fe091e161583fb5aa27f1d9c65cc57"
 
 [[metadata.targets]]
 requires_python = ">=3.10"
@@ -875,6 +875,17 @@ dependencies = [
 files = [
     {file = "pexpect-4.9.0-py2.py3-none-any.whl", hash = "sha256:7236d1e080e4936be2dc3e326cec0af72acf9212a7e1d060210e70a47e253523"},
     {file = "pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f"},
+]
+
+[[package]]
+name = "phonenumbers"
+version = "9.0.42"
+requires_python = ">=2.5"
+summary = "Python version of Google's common library for parsing, formatting, storing and validating international phone numbers."
+groups = ["default"]
+files = [
+    {file = "phonenumbers-9.0.42-py2.py3-none-any.whl", hash = "sha256:321c92d9734bfb4adc64575f940da26463f09fc79ac692b43a35f9306e4ecc7d"},
+    {file = "phonenumbers-9.0.42.tar.gz", hash = "sha256:83ddc20edea93814f5bb2ee8d365b3ef64fa274c8a4f6d06bd8b2c7996030564"},
 ]
 
 [[package]]
