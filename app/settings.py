@@ -140,6 +140,12 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Configurações de arquivos de mídia
 MEDIA_URL = '/media/'
 FILE_UPLOAD_PERMISSIONS = 0o640
+try:
+    MAX_IMAGE_UPLOAD_BYTES = int(os.getenv('MAX_IMAGE_UPLOAD_BYTES', str(5 * 1024 * 1024)))
+except ValueError:
+    raise ImproperlyConfigured('MAX_IMAGE_UPLOAD_BYTES deve ser um inteiro positivo em bytes.') from None
+if MAX_IMAGE_UPLOAD_BYTES <= 0:
+    raise ImproperlyConfigured('MAX_IMAGE_UPLOAD_BYTES deve ser um inteiro positivo em bytes.')
 
 # Configurações do Cloudinary
 
