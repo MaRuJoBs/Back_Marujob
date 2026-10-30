@@ -15,14 +15,15 @@ from rest_framework_simplejwt.views import (
 )
 
 from core.views import (
+    CandidaturaViewSet,
+    DefinirSenhaView,
     FavoritoViewSet,
     FreelanceViewSet,
+    GoogleLoginView,
     PortfolioViewSet,
+    TrocarSenhaView,
     UserRegistrationView,
     UserViewSet,
-    GoogleLoginView,
-    DefinirSenhaView,
-    TrocarSenhaView
 )
 
 router = DefaultRouter()
@@ -31,6 +32,7 @@ router.register(r'usuarios', UserViewSet, basename='usuarios')
 router.register(r'freelances', FreelanceViewSet, basename='freelances')
 router.register(r'portfolios', PortfolioViewSet, basename='portfolios')
 router.register(r'favoritos', FavoritoViewSet, basename='favoritos')
+router.register(r'candidaturas', CandidaturaViewSet, basename='candidaturas')
 urlpatterns = [
     path('admin/', admin.site.urls),
     # OpenAPI 3
@@ -56,5 +58,4 @@ urlpatterns = [
     path('api/registro/', UserRegistrationView.as_view(), name='user_registration'),
     # API
     path('api/', include(router.urls)),
-
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

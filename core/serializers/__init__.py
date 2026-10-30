@@ -2,3 +2,4 @@ from .user import UserRegistrationSerializer, UserSerializer, UserProfileSeriali
 from .freelance import FreelanceSerializer
 from .portfolio import PortfolioSerializer
 from .favorito import FavoritoSerializer
+from .candidatura import CandidaturaCreateSerializer, CandidaturaSerializer, CandidatoProfissionalSerializer

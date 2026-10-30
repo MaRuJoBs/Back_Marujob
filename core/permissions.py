@@ -30,3 +30,21 @@ class FreelancerPortfolioPermission(BasePermission):
 
     def has_object_permission(self, request, view, obj):
         return obj.usuario_id == request.user.pk
+
+
+class CandidaturaPermission(BasePermission):
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        role = account_type(request.user)
+        if request.method == 'POST':
+            return role == 'usuario'
+        return role in {'usuario', 'empresa'}
+
+    def has_object_permission(self, request, view, obj):
+        if request.method not in SAFE_METHODS:
+            return False
+        role = account_type(request.user)
+        if role == 'usuario':
+            return obj.freelancer_id == request.user.pk
+        return role == 'empresa' and obj.oportunidade.empresa_id == request.user.pk
