@@ -1,7 +1,11 @@
+# Django integration assertions match the existing test suite.
+# ruff: noqa: PT009
 from django.contrib.auth.models import Group
 from rest_framework.test import APITestCase
 
 from core.models import Freelance, User
+
+SEARCH_CHARACTER_LIMIT = 200
 
 
 class OpportunityQueryTests(APITestCase):
@@ -13,12 +17,20 @@ class OpportunityQueryTests(APITestCase):
         cls.worker.groups.add(Group.objects.get(name='Usuário'))
         cls.jobs = [
             Freelance.objects.create(
-                empresa=cls.company, titulo=f'Designer {index}', tag='design',
-                preco=index * 10, tempo='1 dia',
-            ) for index in range(23)
+                empresa=cls.company,
+                titulo=f'Designer {index}',
+                tag='design',
+                preco=index * 10,
+                tempo='1 dia',
+            )
+            for index in range(23)
         ]
         cls.other = Freelance.objects.create(
-            titulo='Programador', descricao='Designer', tag='dev', preco=500, tempo='2 dias',
+            titulo='Programador',
+            descricao='Designer',
+            tag='dev',
+            preco=500,
+            tempo='2 dias',
         )
 
     def setUp(self):
@@ -36,7 +48,26 @@ class OpportunityQueryTests(APITestCase):
         self.assertIsNone(data['previous'])
         self.assertEqual([row['id'] for row in data['results']], [job.pk for job in self.jobs[:10]])
         detail = self.client.get(f'/api/freelances/{self.other.pk}/').data
-        self.assertEqual(set(detail), {'id', 'empresa', 'titulo', 'descricao', 'tag', 'preco', 'tempo'})
+        self.assertEqual(
+            set(detail),
+            {
+                'id',
+                'empresa',
+                'titulo',
+                'descricao',
+                'tag',
+                'preco',
+                'tempo',
+                'requisitos',
+                'beneficios',
+                'tipo_contratacao',
+                'nivel_experiencia',
+                'jornada_trabalho',
+                'data_publicacao',
+                'salario_minimo',
+                'salario_maximo',
+            },
+        )
         self.assertIsNone(detail['empresa'])
 
     def test_empty_collection(self):
@@ -62,7 +93,7 @@ class OpportunityQueryTests(APITestCase):
         for search in ['x' * 200, ' '.join(['Designer'] * 20)]:
             with self.subTest(search=search):
                 data = self.get_list(search=search)
-                self.assertEqual(data['count'], 0 if len(search) == 200 else 23)
+                self.assertEqual(data['count'], 0 if len(search) == SEARCH_CHARACTER_LIMIT else 23)
 
     def test_search_excessive_characters_rejected_without_queries(self):
         for search in ['x' * 201, ' ' * 201, 'x ' * 1100]:
@@ -92,9 +123,12 @@ class OpportunityQueryTests(APITestCase):
                 self.assertEqual(data['results'][0]['id'], job.pk)
 
     def test_price_bounds_inclusive(self):
-        for params, count in [({'preco_min': 200}, 4), ({'preco_max': 10}, 2),
-                              ({'preco_min': 0, 'preco_max': 0}, 1),
-                              ({'preco_min': 100, 'preco_max': 120}, 3)]:
+        for params, count in [
+            ({'preco_min': 200}, 4),
+            ({'preco_max': 10}, 2),
+            ({'preco_min': 0, 'preco_max': 0}, 1),
+            ({'preco_min': 100, 'preco_max': 120}, 3),
+        ]:
             with self.subTest(params=params):
                 self.assertEqual(self.get_list(**params)['count'], count)
 
