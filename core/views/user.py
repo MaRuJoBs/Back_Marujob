@@ -59,6 +59,7 @@ class UserViewSet(ReadOnlyModelViewSet):
                 user,
                 data=request.data,
                 partial=True,
+                context=self.get_serializer_context(),
             )
             serializer.is_valid(raise_exception=True)
             serializer.save()
@@ -68,7 +69,7 @@ class UserViewSet(ReadOnlyModelViewSet):
                 status=status.HTTP_200_OK,
             )
 
-        serializer = UserProfileSerializer(user)
+        serializer = UserProfileSerializer(user, context=self.get_serializer_context())
 
         return Response(
             serializer.data,

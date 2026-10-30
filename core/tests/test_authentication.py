@@ -300,7 +300,7 @@ class AuthenticationTests(APITestCase):
         for invalid_claims in [
             {'iss': 'https://attacker.example.com'},
             {'aud': 'wrong-client'},
-            {'exp': now - 1},
+            {'exp': now - 60},
             {'email_verified': False},
             {'sub': ''},
         ]:
@@ -416,7 +416,7 @@ class ProductionSettingsTests(SimpleTestCase):
             for key, value in environment.items():
                 if value is None:
                     os.environ.pop(key, None)
-            return runpy.run_path(str(Path(__file__).resolve().parent.parent / 'app' / 'settings.py'))
+            return runpy.run_path(str(Path(__file__).resolve().parents[2] / 'app' / 'settings.py'))
 
     def test_production_explicit_configuration(self):
         with patch('builtins.print') as output:
@@ -430,6 +430,16 @@ class ProductionSettingsTests(SimpleTestCase):
         self.assertEqual(settings['SIMPLE_JWT']['ACCESS_TOKEN_LIFETIME'], timedelta(minutes=180))
         self.assertEqual(settings['SIMPLE_JWT']['REFRESH_TOKEN_LIFETIME'], timedelta(days=1))
         output.assert_not_called()
+
+    def test_upload_limit_configuration_and_production_storage(self):
+        settings = self.load_settings(MAX_IMAGE_UPLOAD_BYTES='123456')
+        self.assertEqual(settings['MAX_IMAGE_UPLOAD_BYTES'], 123456)
+        self.assertEqual(
+            settings['STORAGES']['default']['BACKEND'], 'cloudinary_storage.storage.MediaCloudinaryStorage'
+        )
+        for value in ['invalid', '0', '-1']:
+            with self.subTest(value=value), self.assertRaises(ImproperlyConfigured):
+                self.load_settings(MAX_IMAGE_UPLOAD_BYTES=value)
 
     def test_production_rejects_insecure_configuration(self):
         for overrides in [

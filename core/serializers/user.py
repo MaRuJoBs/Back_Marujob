@@ -1,14 +1,20 @@
+import math
+from datetime import timedelta
+
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 
 from core.models import User
 from core.permissions import account_type
+from core.serializers.fields import SafeImageStorageMixin, StringListField, ValidatedImageField
 
 MAX_LATITUDE = 90
 MAX_LONGITUDE = 180
+GEOLOCATION_CLOCK_SKEW = timedelta(minutes=5)
 
 
 class UserSerializer(ModelSerializer):
@@ -35,8 +41,9 @@ class UserSerializer(ModelSerializer):
         depth = 1
 
 
-class UserRegistrationSerializer(ModelSerializer):
+class UserRegistrationSerializer(SafeImageStorageMixin, ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    profile_image = ValidatedImageField(required=False, allow_null=True)
 
     tipo = serializers.ChoiceField(
         choices=[
@@ -72,8 +79,10 @@ class UserRegistrationSerializer(ModelSerializer):
         return user
 
 
-class UserProfileSerializer(serializers.ModelSerializer):
+class UserProfileSerializer(SafeImageStorageMixin, serializers.ModelSerializer):
     precisa_definir_senha = serializers.SerializerMethodField()
+    profile_image = ValidatedImageField(required=False, allow_null=True)
+    habilidades = StringListField(required=False)
     groups = serializers.SerializerMethodField()
     tipo = serializers.SerializerMethodField()
 
@@ -127,6 +136,26 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
         if longitude is not None and not -MAX_LONGITUDE <= longitude <= MAX_LONGITUDE:
             raise serializers.ValidationError({'longitude': 'Longitude inválida.'})
+
+        # Explicitly clearing coordinates also removes obsolete GPS metadata.
+        if latitude is None and longitude is None and {'latitude', 'longitude'} & attrs.keys():
+            attrs['geolocation_accuracy'] = None
+            attrs['geolocation_timestamp'] = None
+        accuracy = attrs.get('geolocation_accuracy', self.instance.geolocation_accuracy if self.instance else None)
+        timestamp = attrs.get('geolocation_timestamp', self.instance.geolocation_timestamp if self.instance else None)
+        if 'geolocation_accuracy' in attrs and accuracy is not None and (not math.isfinite(accuracy) or accuracy < 0):
+            raise serializers.ValidationError({'geolocation_accuracy': 'A precisão deve ser finita e não negativa.'})
+        gps_fields = {'latitude', 'longitude', 'geolocation_accuracy', 'geolocation_timestamp'}
+        if gps_fields & attrs.keys() and latitude is None and (accuracy is not None or timestamp is not None):
+            raise serializers.ValidationError({'localizacao': 'Metadados GPS exigem latitude e longitude.'})
+        if (
+            'geolocation_timestamp' in attrs
+            and timestamp is not None
+            and timestamp > timezone.now() + GEOLOCATION_CLOCK_SKEW
+        ):
+            raise serializers.ValidationError({
+                'geolocation_timestamp': 'A data da localização não pode estar no futuro.'
+            })
 
         return attrs
 
