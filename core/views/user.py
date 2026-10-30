@@ -90,6 +90,8 @@ class GoogleLoginView(CreateAPIView):
     """Login e cadastro utilizando uma conta Google."""
 
     permission_classes = [AllowAny]
+    # Identity comes from the verified Google credential, not an old API JWT.
+    authentication_classes = []
 
     @staticmethod
     @transaction.atomic
@@ -104,7 +106,10 @@ class GoogleLoginView(CreateAPIView):
         tipo = request.data.get('tipo')
         cadastro = request.data.get('cadastro', False)
         if isinstance(cadastro, str):
-            cadastro = cadastro.lower() == 'true'
+            cadastro = cadastro.strip().lower()
+            if cadastro not in {'true', 'false'}:
+                return Response({'detail': 'Informe cadastro como true ou false.'}, status=400)
+            cadastro = cadastro == 'true'
         if not isinstance(cadastro, bool) or not isinstance(token, str):
             return Response({'detail': 'Credenciais inválidas.'}, status=400)
         if not settings.GOOGLE_CLIENT_ID:
@@ -118,7 +123,7 @@ class GoogleLoginView(CreateAPIView):
             )
 
         # Verifica o tipo de conta
-        if cadastro and tipo not in {'usuario', 'empresa'}:
+        if cadastro and (not isinstance(tipo, str) or tipo not in {'usuario', 'empresa'}):
             return Response(
                 {'detail': 'Tipo de usuário inválido.'},
                 status=status.HTTP_400_BAD_REQUEST,

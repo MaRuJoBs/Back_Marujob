@@ -12,9 +12,10 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 # ruff: noqa: PT009, PT027
 from django.contrib.auth.models import Group
 from django.core.exceptions import ImproperlyConfigured
-from django.test import SimpleTestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, override_settings
 from google.auth import crypt, jwt
-from rest_framework.test import APITestCase
+from google.auth.exceptions import TransportError
+from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from core.models import Freelance, Portfolio, User
@@ -332,6 +333,67 @@ class AuthenticationTests(APITestCase):
         tampered = token.rsplit('.', 1)[0] + '.' + ('A' if signature[0] != 'A' else 'B') + signature[1:]
         self.assertEqual(self.client.post('/api/auth/google/', {'credential': tampered}).status_code, 400)
 
+    @patch('core.views.user.id_token.verify_oauth2_token')
+    def test_google_login_preserves_existing_groups_and_contract(self, verify):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer stale-api-token')
+        self.company.google_id = 'company-google-sub'
+        self.company.save()
+        admin_group = Group.objects.create(name='Google reviewers')
+        self.company.groups.add(admin_group)
+        original_groups = set(self.company.groups.values_list('pk', flat=True))
+        verify.return_value = {
+            'email': self.company.email,
+            'email_verified': True,
+            'sub': self.company.google_id,
+            'aud': 'test-client',
+        }
+        response = self.client.post(
+            '/api/auth/google/',
+            {
+                'credential': 'valid',
+                'cadastro': False,
+                'tipo': 'usuario',
+                'email': self.worker.email,
+                'groups': [],
+                'is_superuser': True,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(set(response.data), {'access', 'refresh', 'user', 'precisa_definir_senha'})
+        self.assertEqual(response.data['user']['id'], self.company.pk)
+        self.assertEqual(response.data['user']['tipo'], 'empresa')
+        self.assertEqual(set(self.company.groups.values_list('pk', flat=True)), original_groups)
+        self.company.refresh_from_db()
+        self.assertFalse(self.company.is_superuser)
+
+    @patch('core.views.user.id_token.verify_oauth2_token')
+    def test_google_unavailable_and_malformed_requests(self, verify):
+        verify.side_effect = TransportError('private upstream details')
+        response = self.client.post('/api/auth/google/', {'credential': 'valid'})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data, {'detail': 'Autenticação Google indisponível.'})
+        verify.reset_mock()
+        for data in [
+            {'credential': 'valid', 'cadastro': 'invalid'},
+            {'credential': 'valid', 'cadastro': True, 'tipo': []},
+            {'credential': []},
+        ]:
+            with self.subTest(data=data):
+                self.assertEqual(self.client.post('/api/auth/google/', data, format='json').status_code, 400)
+        verify.assert_not_called()
+        with override_settings(GOOGLE_CLIENT_ID=''):
+            self.assertEqual(self.client.post('/api/auth/google/', {'credential': 'valid'}).status_code, 503)
+        verify.assert_not_called()
+
+    @patch('core.views.user.google_requests.Request')
+    def test_google_certificate_service_unavailable(self, transport):
+        # Exercise the verifier's actual HTTP-error mapping without network access.
+        transport.return_value.return_value.status = 503
+        response = self.client.post('/api/auth/google/', {'credential': 'valid'})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data, {'detail': 'Autenticação Google indisponível.'})
+
 
 class ProductionSettingsTests(SimpleTestCase):
     def load_settings(self, **overrides):
@@ -341,10 +403,19 @@ class ProductionSettingsTests(SimpleTestCase):
             'SECRET_KEY': 'test-only-key-' * 5,
             'ALLOWED_HOSTS': 'api.example.com',
             'CORS_ALLOWED_ORIGINS': 'https://example.com',
+            'CSRF_TRUSTED_ORIGINS': '',
+            'TRUST_X_FORWARDED_PROTO': 'False',
+            'GOOGLE_CLIENT_ID': ' test-client ',
             'DATABASE_URL': 'sqlite:///:memory:',
         }
         environment.update(overrides)
-        with patch.dict(os.environ, environment), patch('dotenv.load_dotenv'):
+        with (
+            patch.dict(os.environ, {key: value for key, value in environment.items() if value is not None}),
+            patch('dotenv.load_dotenv'),
+        ):
+            for key, value in environment.items():
+                if value is None:
+                    os.environ.pop(key, None)
             return runpy.run_path(str(Path(__file__).resolve().parent.parent / 'app' / 'settings.py'))
 
     def test_production_explicit_configuration(self):
@@ -353,6 +424,9 @@ class ProductionSettingsTests(SimpleTestCase):
         self.assertFalse(settings['CORS_ALLOW_ALL_ORIGINS'])
         self.assertEqual(settings['CORS_ALLOWED_ORIGINS'], ['https://example.com'])
         self.assertEqual(settings['ALLOWED_HOSTS'], ['api.example.com'])
+        self.assertEqual(settings['CSRF_TRUSTED_ORIGINS'], [])
+        self.assertEqual(settings['GOOGLE_CLIENT_ID'], 'test-client')
+        self.assertIsNone(settings['SECURE_PROXY_SSL_HEADER'])
         self.assertEqual(settings['SIMPLE_JWT']['ACCESS_TOKEN_LIFETIME'], timedelta(minutes=180))
         self.assertEqual(settings['SIMPLE_JWT']['REFRESH_TOKEN_LIFETIME'], timedelta(days=1))
         output.assert_not_called()
@@ -366,3 +440,70 @@ class ProductionSettingsTests(SimpleTestCase):
         ]:
             with self.subTest(overrides=overrides), self.assertRaises(ImproperlyConfigured):
                 self.load_settings(**overrides)
+
+    def test_development_vite_defaults_and_empty_google_configuration(self):
+        settings = self.load_settings(
+            MODE=' development ',
+            CORS_ALLOWED_ORIGINS=None,
+            CSRF_TRUSTED_ORIGINS=None,
+            ALLOWED_HOSTS=None,
+            GOOGLE_CLIENT_ID='   ',
+        )
+        self.assertEqual(settings['MODE'], 'DEVELOPMENT')
+        self.assertFalse(settings['CORS_ALLOW_ALL_ORIGINS'])
+        self.assertEqual(settings['CORS_ALLOWED_ORIGINS'], ['http://localhost:5173', 'http://127.0.0.1:5173'])
+        for origin in settings['CORS_ALLOWED_ORIGINS']:
+            self.assertIn(origin, settings['CSRF_TRUSTED_ORIGINS'])
+        self.assertEqual(settings['ALLOWED_HOSTS'], ['localhost', '127.0.0.1'])
+        self.assertEqual(settings['GOOGLE_CLIENT_ID'], '')
+
+    def test_production_origins_and_proxy_are_explicit(self):
+        settings = self.load_settings(
+            CORS_ALLOWED_ORIGINS=' https://web.example.com, https://preview.example.com ',
+            CSRF_TRUSTED_ORIGINS=' https://admin.example.com ',
+            TRUST_X_FORWARDED_PROTO='true',
+        )
+        self.assertEqual(settings['CORS_ALLOWED_ORIGINS'], ['https://web.example.com', 'https://preview.example.com'])
+        self.assertEqual(settings['CSRF_TRUSTED_ORIGINS'], ['https://admin.example.com'])
+        self.assertEqual(settings['SECURE_PROXY_SSL_HEADER'], ('HTTP_X_FORWARDED_PROTO', 'https'))
+        request = RequestFactory().get('/', HTTP_X_FORWARDED_PROTO='https')
+        with override_settings(SECURE_PROXY_SSL_HEADER=settings['SECURE_PROXY_SSL_HEADER']):
+            self.assertTrue(request.is_secure())
+        with override_settings(SECURE_PROXY_SSL_HEADER=None):
+            self.assertFalse(request.is_secure())
+
+    def test_lowercase_debug_and_invalid_mode_are_rejected(self):
+        for overrides in [{'DEBUG': 'true'}, {'MODE': 'unknown'}]:
+            with self.subTest(overrides=overrides), self.assertRaises(ImproperlyConfigured):
+                self.load_settings(**overrides)
+
+    def test_google_cors_preflight_and_json_without_session_csrf(self):
+        settings = self.load_settings(MODE='DEVELOPMENT', CORS_ALLOWED_ORIGINS=None)
+        client = APIClient(enforce_csrf_checks=True)
+        with override_settings(
+            CORS_ALLOW_ALL_ORIGINS=False,
+            CORS_ALLOWED_ORIGINS=settings['CORS_ALLOWED_ORIGINS'],
+            GOOGLE_CLIENT_ID='test-client',
+        ):
+            for origin in settings['CORS_ALLOWED_ORIGINS']:
+                response = client.options(
+                    '/api/auth/google/',
+                    HTTP_ORIGIN=origin,
+                    HTTP_ACCESS_CONTROL_REQUEST_METHOD='POST',
+                    HTTP_ACCESS_CONTROL_REQUEST_HEADERS='content-type,authorization',
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response['Access-Control-Allow-Origin'], origin)
+                self.assertIn('content-type', response['Access-Control-Allow-Headers'])
+                with patch('core.views.user.id_token.verify_oauth2_token', side_effect=ValueError('invalid')):
+                    response = client.post(
+                        '/api/auth/google/', {'credential': 'invalid'}, format='json', HTTP_ORIGIN=origin
+                    )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response['Access-Control-Allow-Origin'], origin)
+            response = client.options(
+                '/api/auth/google/',
+                HTTP_ORIGIN='https://untrusted.example.com',
+                HTTP_ACCESS_CONTROL_REQUEST_METHOD='POST',
+            )
+            self.assertNotIn('Access-Control-Allow-Origin', response)

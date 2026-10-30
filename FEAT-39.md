@@ -204,11 +204,14 @@ migration de dados que invente a classificação de contas antigas.
 Produção/MIGRATE exigem `DEBUG=False`, `SECRET_KEY` com pelo menos 50 caracteres,
 sem prefixo `django-insecure`, e `ALLOWED_HOSTS` explícitos separados por vírgula,
 sem `*`. `CORS_ALLOWED_ORIGINS` contém origens completas separadas por vírgula.
-Somente `MODE=DEVELOPMENT` mantém CORS aberto; hosts locais são o padrão de
-desenvolvimento. Acesso via IP de rede exige configurar esse host explicitamente.
-Nenhum `.env` foi modificado nem segredo exibido. HTTPS, proxy, cookies de sessão,
-HSTS e configuração de infraestrutura continuam sob responsabilidade do ambiente
-de publicação e não foram alterados nesta feature.
+CORS permanece restrito também em desenvolvimento: os padrões são as origens Vite
+`http://localhost:5173` e `http://127.0.0.1:5173`. Outros endereços exigem configuração
+explícita. Hosts locais são o padrão de desenvolvimento. Acesso via IP de rede exige
+configurar esse host explicitamente e não garante compatibilidade com Google.
+Nenhum `.env` foi modificado nem segredo exibido. A revisão OAuth adicionou
+`CSRF_TRUSTED_ORIGINS` por ambiente e `TRUST_X_FORWARDED_PROTO`, desativado por padrão.
+HTTPS, proxy, cookies de sessão, HSTS e infraestrutura dependem do ambiente de
+publicação. Consulte [GOOGLE-OAUTH.md](GOOGLE-OAUTH.md) para a configuração atual.
 
 Google exige `GOOGLE_CLIENT_ID` real do ambiente. `verify_oauth2_token` verifica
 assinatura, emissor, audiência e validade temporal; o backend também exige assunto,

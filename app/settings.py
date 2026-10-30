@@ -10,14 +10,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Define o modo de execução da aplicação
-MODE = os.getenv('MODE')
+MODE = os.getenv('MODE', '').strip().upper()
+if MODE not in {'DEVELOPMENT', 'MIGRATE', 'PRODUCTION'}:
+    raise ImproperlyConfigured('MODE deve ser DEVELOPMENT, MIGRATE ou PRODUCTION.')
 
 # Constrói o caminho base do projeto, usado para definir caminhos relativos
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Segurança e configuração básica
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure')
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
+DEBUG = os.getenv('DEBUG', 'False').strip().lower() == 'true'
 ALLOWED_HOSTS = [
     h.strip()
     for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1' if MODE == 'DEVELOPMENT' else '').split(',')
@@ -27,13 +29,27 @@ MIN_SECRET_KEY_LENGTH = 50
 UNSAFE_SECRET_KEY = SECRET_KEY.startswith('django-insecure') or len(SECRET_KEY) < MIN_SECRET_KEY_LENGTH
 if MODE != 'DEVELOPMENT' and any((DEBUG, UNSAFE_SECRET_KEY, not ALLOWED_HOSTS, '*' in ALLOWED_HOSTS)):
     raise ImproperlyConfigured('Configure SECRET_KEY forte, ALLOWED_HOSTS explícitos e DEBUG=False.')
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-    'http://localhost:8000',
+DEVELOPMENT_FRONTEND_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173'
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        'CORS_ALLOWED_ORIGINS', DEVELOPMENT_FRONTEND_ORIGINS if MODE == 'DEVELOPMENT' else ''
+    ).split(',')
+    if origin.strip()
 ]
-CORS_ALLOW_ALL_ORIGINS = MODE == 'DEVELOPMENT'
-CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()]
-GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        'CSRF_TRUSTED_ORIGINS',
+        DEVELOPMENT_FRONTEND_ORIGINS + ',http://localhost:3000,http://localhost:8000' if MODE == 'DEVELOPMENT' else '',
+    ).split(',')
+    if origin.strip()
+]
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
+# Enable only behind a controlled proxy that strips/replaces client-supplied headers.
+TRUST_X_FORWARDED_PROTO = os.getenv('TRUST_X_FORWARDED_PROTO', 'False').strip().lower() == 'true'
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_X_FORWARDED_PROTO else None
 
 # Aplicações instaladas
 INSTALLED_APPS = [
@@ -55,9 +71,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
