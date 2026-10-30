@@ -1,3 +1,5 @@
+import logging
+
 import requests
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -25,6 +27,9 @@ from core.serializers import (
     UserRegistrationSerializer,
     UserSerializer,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class UserViewSet(ReadOnlyModelViewSet):
@@ -135,11 +140,23 @@ class GoogleLoginView(CreateAPIView):
                 token,
                 google_requests.Request(),
                 settings.GOOGLE_CLIENT_ID,
+                clock_skew_in_seconds=5,
             )
 
         except TransportError:
             return Response({'detail': 'Autenticação Google indisponível.'}, status=503)
-        except (ValueError, GoogleAuthError):
+        except (ValueError, GoogleAuthError) as error:
+            # Never log the exception itself: it may contain the credential.
+            message = str(error).lower()
+            if 'used too early' in message:
+                reason = 'clock_skew'
+            elif 'audience' in message:
+                reason = 'audience'
+            elif 'expired' in message:
+                reason = 'expired'
+            else:
+                reason = 'invalid_token'
+            logger.warning('Google credential rejected: %s', reason)
             return Response(
                 {'detail': 'Token do Google inválido.'},
                 status=status.HTTP_400_BAD_REQUEST,

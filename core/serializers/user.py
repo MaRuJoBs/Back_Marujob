@@ -73,8 +73,12 @@ class UserRegistrationSerializer(ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    precisa_definir_senha = serializers.SerializerMethodField()
     groups = serializers.SerializerMethodField()
     tipo = serializers.SerializerMethodField()
+
+    def get_precisa_definir_senha(self, obj) -> bool:
+        return not obj.has_usable_password()
 
     def get_groups(self, obj):
         return UserSerializer(obj).data['groups']
@@ -100,6 +104,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'habilidades',
             'perfil_configurado',
             'aviso_perfil_dispensado',
+            'precisa_definir_senha',
             'groups',
             'tipo',
         ]
