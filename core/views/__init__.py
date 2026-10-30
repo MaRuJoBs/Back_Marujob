@@ -10,3 +10,4 @@ from .freelance import FreelanceViewSet
 
 from .portfolio import PortfolioViewSet
 from .favorito import FavoritoViewSet
+from .candidatura import CandidaturaViewSet
