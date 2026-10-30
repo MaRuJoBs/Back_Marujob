@@ -15,6 +15,7 @@ from rest_framework_simplejwt.views import (
 )
 
 from core.views import (
+    FavoritoViewSet,
     FreelanceViewSet,
     PortfolioViewSet,
     UserRegistrationView,
@@ -29,6 +30,7 @@ router = DefaultRouter()
 router.register(r'usuarios', UserViewSet, basename='usuarios')
 router.register(r'freelances', FreelanceViewSet, basename='freelances')
 router.register(r'portfolios', PortfolioViewSet, basename='portfolios')
+router.register(r'favoritos', FavoritoViewSet, basename='favoritos')
 urlpatterns = [
     path('admin/', admin.site.urls),
     # OpenAPI 3
