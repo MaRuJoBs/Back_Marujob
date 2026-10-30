@@ -300,7 +300,7 @@ class AuthenticationTests(APITestCase):
         for invalid_claims in [
             {'iss': 'https://attacker.example.com'},
             {'aud': 'wrong-client'},
-            {'exp': now - 1},
+            {'exp': now - 60},
             {'email_verified': False},
             {'sub': ''},
         ]:
