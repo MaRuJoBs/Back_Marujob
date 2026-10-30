@@ -7,3 +7,4 @@ class FreelanceSerializer(ModelSerializer):
     class Meta:
         model = Freelance
         fields = '__all__'
+        read_only_fields = ['empresa']

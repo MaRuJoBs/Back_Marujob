@@ -3,26 +3,53 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
 # Define o modo de execução da aplicação
-MODE = os.getenv('MODE')
+MODE = os.getenv('MODE', '').strip().upper()
+if MODE not in {'DEVELOPMENT', 'MIGRATE', 'PRODUCTION'}:
+    raise ImproperlyConfigured('MODE deve ser DEVELOPMENT, MIGRATE ou PRODUCTION.')
 
 # Constrói o caminho base do projeto, usado para definir caminhos relativos
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Segurança e configuração básica
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure')
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = ['*']
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-    'http://localhost:8000',
+DEBUG = os.getenv('DEBUG', 'False').strip().lower() == 'true'
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1' if MODE == 'DEVELOPMENT' else '').split(',')
+    if h.strip()
 ]
-CORS_ALLOW_ALL_ORIGINS = True
+MIN_SECRET_KEY_LENGTH = 50
+UNSAFE_SECRET_KEY = SECRET_KEY.startswith('django-insecure') or len(SECRET_KEY) < MIN_SECRET_KEY_LENGTH
+if MODE != 'DEVELOPMENT' and any((DEBUG, UNSAFE_SECRET_KEY, not ALLOWED_HOSTS, '*' in ALLOWED_HOSTS)):
+    raise ImproperlyConfigured('Configure SECRET_KEY forte, ALLOWED_HOSTS explícitos e DEBUG=False.')
+DEVELOPMENT_FRONTEND_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173'
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        'CORS_ALLOWED_ORIGINS', DEVELOPMENT_FRONTEND_ORIGINS if MODE == 'DEVELOPMENT' else ''
+    ).split(',')
+    if origin.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        'CSRF_TRUSTED_ORIGINS',
+        DEVELOPMENT_FRONTEND_ORIGINS + ',http://localhost:3000,http://localhost:8000' if MODE == 'DEVELOPMENT' else '',
+    ).split(',')
+    if origin.strip()
+]
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
+# Enable only behind a controlled proxy that strips/replaces client-supplied headers.
+TRUST_X_FORWARDED_PROTO = os.getenv('TRUST_X_FORWARDED_PROTO', 'False').strip().lower() == 'true'
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_X_FORWARDED_PROTO else None
 
 # Aplicações instaladas
 INSTALLED_APPS = [
@@ -44,9 +71,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -107,36 +134,36 @@ USE_TZ = True
 
 # Configurações de arquivos estáticos
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Configurações de arquivos de mídia
 # Configurações de arquivos de mídia
-MEDIA_URL = "/media/"
+MEDIA_URL = '/media/'
 FILE_UPLOAD_PERMISSIONS = 0o640
 
 # Configurações do Cloudinary
 
 
-if MODE == "DEVELOPMENT":
-    MY_IP = os.getenv("MY_IP", "127.0.0.1")
+if MODE == 'DEVELOPMENT':
+    MY_IP = os.getenv('MY_IP', '127.0.0.1')
 
-    MEDIA_URL = "/media/"
-    MEDIA_ROOT = BASE_DIR / "media"
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
-elif MODE in ("MIGRATE", "PRODUCTION"):
-    MEDIA_URL = "/media/"
+elif MODE in {'MIGRATE', 'PRODUCTION'}:
+    MEDIA_URL = '/media/'
 
     STORAGES = {
-        "default": {
-            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        'default': {
+            'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
         },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
         },
     }
 
 else:
-    raise ValueError(f"MODE inválido: {MODE}")
+    raise ValueError(f'MODE inválido: {MODE}')
 
 # Tipo padrão de campo para chaves primárias
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -153,6 +180,7 @@ AUTH_USER_MODEL = 'core.User'
 
 # Configurações do Django REST Framework
 REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': ('rest_framework.permissions.IsAuthenticated',),
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -165,7 +193,3 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),  # Tokens de atualização expiram em 1 dia
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
-
-# Exibe as configurações principais para verificação
-print(f'{MODE = } \n{MEDIA_URL = } \n{DATABASES = }')
-

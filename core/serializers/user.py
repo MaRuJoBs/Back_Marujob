@@ -1,15 +1,37 @@
 from django.contrib.auth.models import Group
+from django.contrib.auth.password_validation import validate_password
+from django.db import transaction
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 
-
 from core.models import User
+from core.permissions import account_type
+
+MAX_LATITUDE = 90
+MAX_LONGITUDE = 180
 
 
 class UserSerializer(ModelSerializer):
+    tipo = serializers.SerializerMethodField()
+
+    def get_tipo(self, obj):
+        return account_type(obj)
+
     class Meta:
         model = User
-        fields = ['id', 'email', 'name', 'is_active', 'is_staff', 'is_superuser', 'last_login', 'groups', 'profile_image']
+        fields = [
+            'id',
+            'email',
+            'name',
+            'is_active',
+            'is_staff',
+            'is_superuser',
+            'last_login',
+            'groups',
+            'profile_image',
+            'tipo',
+        ]
+        read_only_fields = fields
         depth = 1
 
 
@@ -21,24 +43,45 @@ class UserRegistrationSerializer(ModelSerializer):
             ('usuario', 'Usuário'),
             ('empresa', 'Empresa'),
         ],
-        write_only=True
+        write_only=True,
     )
+
     class Meta:
         model = User
         fields = ['id', 'email', 'name', 'password', 'profile_image', 'tipo']
 
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('Este e-mail já está cadastrado.')
+        return User.objects.normalize_email(value)
+
+    def validate(self, attrs):
+        validate_password(attrs['password'], User(email=attrs['email'], name=attrs.get('name')))
+        return attrs
+
+    @transaction.atomic
     def create(self, validated_data):
         tipo = validated_data.pop('tipo')
         user = User.objects.create_user(**validated_data)
         if tipo == 'empresa':
-            grupo = Group.objects.get(name='Empresa')
+            grupo, _ = Group.objects.get_or_create(name='Empresa')
         else:
-            grupo = Group.objects.get(name='Usuário')
+            grupo, _ = Group.objects.get_or_create(name='Usuário')
         user.groups.add(grupo)
-        
+
         return user
 
+
 class UserProfileSerializer(serializers.ModelSerializer):
+    groups = serializers.SerializerMethodField()
+    tipo = serializers.SerializerMethodField()
+
+    def get_groups(self, obj):
+        return UserSerializer(obj).data['groups']
+
+    def get_tipo(self, obj):
+        return account_type(obj)
+
     class Meta:
         model = User
         fields = [
@@ -57,6 +100,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'habilidades',
             'perfil_configurado',
             'aviso_perfil_dispensado',
+            'groups',
+            'tipo',
         ]
         read_only_fields = [
             'id',
@@ -64,37 +109,21 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'perfil_configurado',
         ]
 
-    
     def validate(self, attrs):
-        latitude = attrs.get(
-            'latitude',
-            self.instance.latitude if self.instance else None
-        )
+        latitude = attrs.get('latitude', self.instance.latitude if self.instance else None)
 
-        longitude = attrs.get(
-            'longitude',
-            self.instance.longitude if self.instance else None
-        )
+        longitude = attrs.get('longitude', self.instance.longitude if self.instance else None)
 
         if (latitude is None) != (longitude is None):
-            raise serializers.ValidationError({
-                'localizacao': (
-                    'Latitude e longitude devem ser informadas juntas.'
-                )
-            })
+            raise serializers.ValidationError({'localizacao': ('Latitude e longitude devem ser informadas juntas.')})
 
-        if latitude is not None and not -90 <= latitude <= 90:
-            raise serializers.ValidationError({
-                'latitude': 'Latitude inválida.'
-            })
+        if latitude is not None and not -MAX_LATITUDE <= latitude <= MAX_LATITUDE:
+            raise serializers.ValidationError({'latitude': 'Latitude inválida.'})
 
-        if longitude is not None and not -180 <= longitude <= 180:
-            raise serializers.ValidationError({
-                'longitude': 'Longitude inválida.'
-            })
+        if longitude is not None and not -MAX_LONGITUDE <= longitude <= MAX_LONGITUDE:
+            raise serializers.ValidationError({'longitude': 'Longitude inválida.'})
 
         return attrs
-
 
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():
@@ -107,9 +136,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             instance.sobre,
             instance.telefone,
         ]
-        instance.perfil_configurado = all(
-            campo and str(campo).strip() for campo in campos_obrigatorios
-        )
+        instance.perfil_configurado = all(campo and str(campo).strip() for campo in campos_obrigatorios)
 
         instance.save()
         return instance
