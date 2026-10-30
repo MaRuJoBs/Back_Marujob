@@ -194,7 +194,7 @@ class CandidaturaTests(APITestCase):  # noqa: PLR0904 -- integration scenarios f
     def test_current_status_and_dates_can_be_read_without_mutation(self):
         application = self.make_application()
         for status in Candidatura.Status.values:
-            # Future operational transitions are not exposed by any HTTP endpoint.
+            # Reading never changes the current persisted decision.
             application.status = status
             application.save()
             response = self.client.get(self.detail(application))
@@ -251,7 +251,7 @@ class CandidaturaTests(APITestCase):  # noqa: PLR0904 -- integration scenarios f
         self.client.force_authenticate(self.worker)
         self.assertEqual(self.client.get(self.detail(application)).status_code, 200)
 
-    def test_updates_deletion_and_decision_actions_are_unavailable(self):
+    def test_generic_updates_and_deletion_are_unavailable(self):
         application = self.make_application()
         for actor in [self.worker, self.company]:
             self.client.force_authenticate(actor)
@@ -267,8 +267,6 @@ class CandidaturaTests(APITestCase):  # noqa: PLR0904 -- integration scenarios f
                         format='json',
                     )
                     self.assertEqual(response.status_code, 405)
-            for action in ['aprovar', 'recusar']:
-                self.assertEqual(self.client.post(f'{self.detail(application)}{action}/').status_code, 404)
         application.refresh_from_db()
         self.assertEqual(application.status, 'pendente')
         self.assertEqual(application.freelancer, self.worker)

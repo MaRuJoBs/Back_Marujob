@@ -20,6 +20,7 @@ from core.views import (
     FavoritoViewSet,
     FreelanceViewSet,
     GoogleLoginView,
+    NotificacaoViewSet,
     PortfolioViewSet,
     TrocarSenhaView,
     UserRegistrationView,
@@ -33,6 +34,7 @@ router.register(r'freelances', FreelanceViewSet, basename='freelances')
 router.register(r'portfolios', PortfolioViewSet, basename='portfolios')
 router.register(r'favoritos', FavoritoViewSet, basename='favoritos')
 router.register(r'candidaturas', CandidaturaViewSet, basename='candidaturas')
+router.register(r'notificacoes', NotificacaoViewSet, basename='notificacoes')
 urlpatterns = [
     path('admin/', admin.site.urls),
     # OpenAPI 3
