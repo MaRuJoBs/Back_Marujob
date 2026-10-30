@@ -39,6 +39,12 @@ class UserRegistrationSerializer(ModelSerializer):
         return user
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    groups = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
+    precisa_definir_senha = serializers.SerializerMethodField()
+
+    def get_precisa_definir_senha(self, obj):
+        return not obj.has_usable_password()
+
     class Meta:
         model = User
         fields = [
@@ -57,6 +63,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'habilidades',
             'perfil_configurado',
             'aviso_perfil_dispensado',
+            'groups',
+            'precisa_definir_senha',
         ]
         read_only_fields = [
             'id',

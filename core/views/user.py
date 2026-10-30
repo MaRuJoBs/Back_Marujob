@@ -1,8 +1,10 @@
+import logging
 import os
 import requests
 
 from django.core.files.base import ContentFile
 from django.contrib.auth.models import Group
+from google.auth.exceptions import GoogleAuthError, TransportError
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
@@ -25,6 +27,9 @@ from core.serializers import (
 
 
 from rest_framework.viewsets import ReadOnlyModelViewSet
+
+
+logger = logging.getLogger(__name__)
 
 
 class UserViewSet(ReadOnlyModelViewSet):
@@ -89,7 +94,7 @@ class GoogleLoginView(CreateAPIView):
         cadastro = request.data.get('cadastro', False)
 
         # Verifica se o token foi enviado
-        if not token:
+        if not isinstance(token, str) or not token.strip():
             return Response(
                 {'detail': 'Token do Google não informado.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -106,15 +111,40 @@ class GoogleLoginView(CreateAPIView):
         if isinstance(cadastro, str):
             cadastro = cadastro.lower() == 'true'
 
-        # Valida o token recebido do Google
+        # Nunca verifica com audience=None: isso desativaria a validacao do Client ID.
+        client_id = (os.getenv('GOOGLE_CLIENT_ID') or '').strip()
+        if not client_id:
+            logger.error('Autenticacao Google sem GOOGLE_CLIENT_ID configurado.')
+            return Response(
+                {'detail': 'Login com Google temporariamente indisponivel.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
         try:
             google_user = id_token.verify_oauth2_token(
                 token,
                 google_requests.Request(),
-                os.getenv('GOOGLE_CLIENT_ID'),
+                audience=client_id,
+                clock_skew_in_seconds=5,
             )
-
-        except ValueError:
+        except TransportError:
+            logger.warning('Falha ao consultar os certificados publicos do Google.')
+            return Response(
+                {'detail': 'Nao foi possivel conectar ao Google. Tente novamente.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except (ValueError, GoogleAuthError) as error:
+            # A excecao pode conter a credencial: registra somente a categoria.
+            message = str(error).lower()
+            if 'used too early' in message:
+                reason = 'clock_skew'
+            elif 'audience' in message:
+                reason = 'audience'
+            elif 'expired' in message:
+                reason = 'expired'
+            else:
+                reason = 'invalid_token'
+            logger.warning('Credencial Google recusada: %s', reason)
             return Response(
                 {'detail': 'Token do Google inválido.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -139,6 +169,11 @@ class GoogleLoginView(CreateAPIView):
 
         # Procura um usuário existente pelo e-mail
         user = User.objects.filter(email=email).first()
+        if user and not user.is_active:
+            return Response(
+                {'detail': 'Esta conta esta desativada.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # =========================================================
         # CADASTRO COM GOOGLE
