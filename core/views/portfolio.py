@@ -1,13 +1,13 @@
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
 from core.models import Portfolio
+from core.permissions import FreelancerPortfolioPermission
 from core.serializers import PortfolioSerializer
 
 
 class PortfolioViewSet(ModelViewSet):
     serializer_class = PortfolioSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [FreelancerPortfolioPermission]
 
     def get_queryset(self):
         return Portfolio.objects.filter(usuario=self.request.user)

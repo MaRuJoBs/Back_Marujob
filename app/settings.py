@@ -3,6 +3,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Carrega as variáveis de ambiente do arquivo .env
@@ -17,12 +18,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Segurança e configuração básica
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1' if MODE == 'DEVELOPMENT' else '').split(',')
+    if h.strip()
+]
+MIN_SECRET_KEY_LENGTH = 50
+UNSAFE_SECRET_KEY = SECRET_KEY.startswith('django-insecure') or len(SECRET_KEY) < MIN_SECRET_KEY_LENGTH
+if MODE != 'DEVELOPMENT' and any((DEBUG, UNSAFE_SECRET_KEY, not ALLOWED_HOSTS, '*' in ALLOWED_HOSTS)):
+    raise ImproperlyConfigured('Configure SECRET_KEY forte, ALLOWED_HOSTS explícitos e DEBUG=False.')
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:8000',
 ]
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = MODE == 'DEVELOPMENT'
+CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()]
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 
 # Aplicações instaladas
 INSTALLED_APPS = [
@@ -107,36 +118,36 @@ USE_TZ = True
 
 # Configurações de arquivos estáticos
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Configurações de arquivos de mídia
 # Configurações de arquivos de mídia
-MEDIA_URL = "/media/"
+MEDIA_URL = '/media/'
 FILE_UPLOAD_PERMISSIONS = 0o640
 
 # Configurações do Cloudinary
 
 
-if MODE == "DEVELOPMENT":
-    MY_IP = os.getenv("MY_IP", "127.0.0.1")
+if MODE == 'DEVELOPMENT':
+    MY_IP = os.getenv('MY_IP', '127.0.0.1')
 
-    MEDIA_URL = "/media/"
-    MEDIA_ROOT = BASE_DIR / "media"
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
-elif MODE in ("MIGRATE", "PRODUCTION"):
-    MEDIA_URL = "/media/"
+elif MODE in {'MIGRATE', 'PRODUCTION'}:
+    MEDIA_URL = '/media/'
 
     STORAGES = {
-        "default": {
-            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        'default': {
+            'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
         },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
         },
     }
 
 else:
-    raise ValueError(f"MODE inválido: {MODE}")
+    raise ValueError(f'MODE inválido: {MODE}')
 
 # Tipo padrão de campo para chaves primárias
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -153,6 +164,7 @@ AUTH_USER_MODEL = 'core.User'
 
 # Configurações do Django REST Framework
 REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': ('rest_framework.permissions.IsAuthenticated',),
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -165,7 +177,3 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),  # Tokens de atualização expiram em 1 dia
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
-
-# Exibe as configurações principais para verificação
-print(f'{MODE = } \n{MEDIA_URL = } \n{DATABASES = }')
-
