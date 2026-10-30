@@ -488,6 +488,7 @@ class NotificacaoCreationConcurrencyTests(TransactionTestCase):
 class NotificacaoMigrationTests(TransactionTestCase):
     def test_backfill_preserves_existing_data_read_state_and_uniqueness(self):  # noqa: PLR0914
         executor = MigrationExecutor(connection)
+        latest_targets = executor.loader.graph.leaf_nodes()
         executor.migrate([('core', '0017_candidatura')])
         try:
             old_apps = executor.loader.project_state([('core', '0017_candidatura')]).apps
@@ -527,4 +528,4 @@ class NotificacaoMigrationTests(TransactionTestCase):
             existing.refresh_from_db()
             self.assertTrue(existing.lida)
         finally:
-            MigrationExecutor(connection).migrate([('core', '0019_notificacoes_retroativas')])
+            MigrationExecutor(connection).migrate(latest_targets)
