@@ -431,6 +431,16 @@ class ProductionSettingsTests(SimpleTestCase):
         self.assertEqual(settings['SIMPLE_JWT']['REFRESH_TOKEN_LIFETIME'], timedelta(days=1))
         output.assert_not_called()
 
+    def test_upload_limit_configuration_and_production_storage(self):
+        settings = self.load_settings(MAX_IMAGE_UPLOAD_BYTES='123456')
+        self.assertEqual(settings['MAX_IMAGE_UPLOAD_BYTES'], 123456)
+        self.assertEqual(
+            settings['STORAGES']['default']['BACKEND'], 'cloudinary_storage.storage.MediaCloudinaryStorage'
+        )
+        for value in ['invalid', '0', '-1']:
+            with self.subTest(value=value), self.assertRaises(ImproperlyConfigured):
+                self.load_settings(MAX_IMAGE_UPLOAD_BYTES=value)
+
     def test_production_rejects_insecure_configuration(self):
         for overrides in [
             {'DEBUG': 'True'},
