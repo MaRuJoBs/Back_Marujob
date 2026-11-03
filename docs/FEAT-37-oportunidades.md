@@ -1,62 +1,132 @@
-# FEAT-37 — Consulta de oportunidades
+# FEAT-37 — API de oportunidades, pesquisa, filtros e paginação
 
-## Contrato disponível
+## A. Diagnóstico inicial
 
-Todas as requisições exigem `Authorization: Bearer <access>` (JWT).
-Empresas e freelancers autenticados podem consultar todas as oportunidades.
-As regras da FEAT-34 continuam: criação somente por empresa; edição e exclusão
-somente pela empresa proprietária. Favoritos e serializer compartilhado não mudaram.
+Auditoria e validação realizadas em 03/11/2026 exclusivamente no repositório Git
+Back_Marujob. A raiz foi confirmada com `pwd` e `git rev-parse --show-toplevel`.
+O status inicial já continha alterações em `.pdm-python`, `.vscode/settings.json`
+e `db.sqlite3`; esses arquivos foram preservados e não fazem parte da implementação.
+Nenhum AGENTS.md foi encontrado dentro do repositório.
 
-- `GET /api/freelances/`: listagem paginada, 10 itens, ordenação crescente por `id`.
-- `GET /api/freelances/{id}/`: objeto de detalhes, sem envelope de paginação.
-- POST na coleção, PUT/PATCH/DELETE no detalhe: CRUD existente, sem mudanças.
+| Requisito | Estado inicial e decisão |
+| --- | --- |
+| CRUD, empresa proprietária e JWT (FEAT-34) | Implementados; preservados |
+| Listagem e detalhes por ID | Implementados; serializer compartilhado já retorna os 15 campos atuais |
+| Pesquisa por título | Implementada com SearchFilter do DRF; preservados parser e limites de segurança |
+| Categoria | Modelo possui `tag` como texto livre; filtro existente por `tag` preservado |
+| Preço mínimo/máximo | Implementados, inclusivos e validados; preservados |
+| Tipo de contratação e nível | Campos com escolhas existentes, filtros ausentes; acrescentados |
+| Paginação | PageNumberPagination global, 10 itens, `id` crescente; preservada |
+| Candidaturas e notificações (FEAT-41/44) | Presentes, com isolamento por usuário/propriedade e decisões de aprovação/recusa; preservadas |
+| Documentação | Exemplos omitiam os campos complementares; referências de testes/ambiente estavam antigas; atualizadas |
+| Modalidade, localização da oportunidade e status de publicação | Não são campos do modelo; não criados nem inferidos da descrição ou da empresa |
 
-| Parâmetro da listagem | Comportamento |
-|---|---|
-| `search` | SearchFilter do DRF sobre `titulo`: pesquisa parcial, sem distinção de caixa conforme suporte do banco. Termos separados por espaço/vírgula são combinados com AND; aspas agrupam uma expressão |
-| `tag` | Igualdade do texto completo, sem distinção de caixa conforme suporte do banco; espaços externos removidos |
-| `preco_min` | Limite inferior inclusivo |
-| `preco_max` | Limite superior inclusivo |
-| `page` | Número da página; padrão 1, DRF também aceita `last` |
+`data_publicacao` é uma data opcional gravável, sem regra existente de agendamento
+ou visibilidade. Datas nulas/futuras não ocultam oportunidades. Não existem rascunho,
+flag de disponibilidade ou vagas privadas no modelo. Todos os usuários autenticados
+podem consultar os registros, inclusive oportunidades legadas sem empresa.
 
-Os preços seguem o campo existente: até 10 dígitos totais, 2 casas decimais,
-mínimo zero e máximo 99999999.99. Vazio, texto não numérico, valores não finitos,
-negativos, precisão excessiva e mínimo maior que máximo retornam 400.
-Ausência de limites não restringe preço. `search` e `tag` vazios não restringem.
-Parâmetros desconhecidos são ignorados. Use um valor por parâmetro.
-Os parâmetros de consulta restringem somente a listagem, sem afetar o CRUD/detalhe.
-Filtros e pesquisa são aplicados no banco antes da paginação.
+`jornada_trabalho` e `tempo` são textos livres sem valores padronizados. Não foram
+criados novos filtros para esses textos, requisitos, benefícios ou data; os filtros
+adicionais usam as escolhas já definidas pelo modelo. O filtro monetário existente
+continua aplicado exclusivamente a `preco`, sem reinterpretar a faixa salarial.
 
-`search` aceita no máximo **200 caracteres** no valor recebido (incluindo espaços
-e aspas) e **20 termos**, contados pelo próprio parser do SearchFilter instalado.
-Expressões entre aspas são contadas conforme esse parser, sem separar manualmente
-as palavras internas. O filtro usa os mesmos termos retornados pela validação.
-Esses limites mantêm consultas usuais e restringem a quantidade de condições SQL,
-evitando a expressão excessiva reproduzida no SQLite com 1.100 termos.
-Valores vazios ou somente com espaços, dentro do limite, não restringem resultados.
-Exceder qualquer limite retorna HTTP 400 antes das consultas de contagem/paginação:
+Não foi encontrado defeito nas funcionalidades anteriores: os 174 testes da suíte
+preexistente passaram antes das alterações. A consulta de oportunidades não serializa
+candidaturas, notificações nem dados privados da conta empresarial.
 
-```json
-{"search":["A pesquisa deve ter no máximo 200 caracteres."]}
-```
+## B. Arquivos modificados
 
-Ou, quando o comprimento é válido mas há mais de 20 termos:
+| Arquivo | Finalidade |
+| --- | --- |
+| `core/views/freelance.py` | Dois filtros validados pelas escolhas do modelo; documentação OpenAPI dos filtros de listagem; nomes para os limites de pesquisa existentes, preservando seus valores |
+| `core/tests/test_opportunity_queries.py` | 13 testes adicionais de integração, totalizando 29 neste módulo |
+| `docs/FEAT-37-oportunidades.md` | Contrato atual, exemplos completos, diagnóstico e evidências desta execução |
 
-```json
-{"search":["A pesquisa deve ter no máximo 20 termos."]}
-```
+Não foram alterados models, serializers de respostas, rotas, permissões, grupos,
+configuração global, dependências, lockfile, infraestrutura ou produção. Nenhuma
+migration foi criada ou aplicada ao banco da aplicação.
 
-Exemplo:
+## C. Endpoints disponíveis
 
-```http
-GET /api/freelances/?search=designer&tag=design&preco_min=100&preco_max=500&page=2
-Authorization: Bearer <access>
-```
+Todas as operações de oportunidades exigem `Authorization: Bearer <access>`.
 
-## Formatos JSON
+| Método | URL | Autorização e resultado esperado |
+| --- | --- | --- |
+| GET | `/api/freelances/` | Autenticados; 200 com coleção paginada |
+| GET | `/api/freelances/{id}/` | Autenticados; 200 ou 404 |
+| POST | `/api/freelances/` | Grupo Empresa; 201; proprietário definido pelo servidor |
+| PUT | `/api/freelances/{id}/` | Empresa proprietária; 200; exige campos obrigatórios |
+| PATCH | `/api/freelances/{id}/` | Empresa proprietária; 200; atualização parcial |
+| DELETE | `/api/freelances/{id}/` | Empresa proprietária; 204 |
 
-Exemplos com IDs e conteúdo ilustrativos, usando os campos reais do contrato.
-Uma coleção com apenas uma oportunidade:
+Sem JWT válido: 401. Escrita sem papel/propriedade: 403. Oportunidades sem empresa
+continuam legíveis e não podem ser modificadas pela API. O cliente não pode transferir
+a propriedade enviando `empresa` no corpo.
+
+Autenticação existente: POST `/api/token/`, `/api/token/refresh/` e
+`/api/token/verify/`. A obtenção recebe email/senha; refresh e verify recebem seus
+tokens no corpo, conforme Simple JWT. OpenAPI: GET `/api/schema/`; Swagger:
+GET `/api/doc/`; ReDoc: GET `/api/redoc/`. Os filtros constam na operação de listagem.
+
+Integrações existentes, também autenticadas e sem alterações nesta entrega:
+
+- Candidaturas: GET/POST `/api/candidaturas/`, GET `/api/candidaturas/{id}/`;
+  criação por freelancer, leitura conforme candidato/empresa proprietária.
+- Decisões: POST `/api/candidaturas/{id}/aprovar/` e `/recusar/`, somente empresa
+  proprietária. Decisão oposta a um estado final mantém a resposta 409 existente.
+- Notificações: GET `/api/notificacoes/`, GET `/api/notificacoes/{id}/` e
+  PATCH `/api/notificacoes/{id}/marcar-lida/`, somente empresa autorizada.
+- Favoritos: GET/POST `/api/favoritos/` e DELETE `/api/favoritos/{id}/`,
+  sempre restritos ao usuário autenticado.
+
+## D. Pesquisa e filtros
+
+Os parâmetros abaixo restringem somente GET da coleção. Não afetam detalhes nem
+operações de escrita. São combinados com AND no banco antes da paginação.
+
+| Parâmetro | Descrição | Exemplo |
+| --- | --- | --- |
+| `search` | Pesquisa parcial apenas no título, usando o parser do DRF | `?search=python` |
+| `tag` | Igualdade do texto completo da tag, sem distinção de caixa conforme o banco | `?tag=tecnologia` |
+| `preco_min` | Limite inferior inclusivo de `preco` | `?preco_min=1000.00` |
+| `preco_max` | Limite superior inclusivo de `preco` | `?preco_max=5000.00` |
+| `tipo_contratacao` | Escolha exata do modelo | `?tipo_contratacao=PJ` |
+| `nivel_experiencia` | Escolha exata do modelo, incluindo acentos | `?nivel_experiencia=Pleno` |
+| `page` | Página, padrão 1; aceita também `last` | `?page=2` |
+
+Escolhas aceitas:
+
+- `tipo_contratacao`: `CLT`, `PJ`, `Autônomo`, `Temporário`, `Estágio`, `Outros`.
+- `nivel_experiencia`: `Iniciante`, `Júnior`, `Pleno`, `Sênior`, `Especialista`.
+
+Pesquisa: até 200 caracteres recebidos e 20 termos interpretados pelo SearchFilter.
+Espaços/vírgulas separam termos combinados com AND; aspas agrupam expressões.
+Exceder os limites retorna 400. `search` vazio/somente espaços não restringe.
+Caracteres especiais de SQL são tratados como texto. Não há remoção de acentos.
+Comparação sem distinção de caixa depende do banco/collation: no SQLite, diferenças
+de caixa em caracteres acentuados podem impedir correspondência. Não foi adicionada
+normalização Unicode, nem foi validado PostgreSQL nesta execução.
+
+`tag` tem limite de 50 caracteres, remove espaços externos e ignora valor vazio.
+Tag inexistente retorna coleção vazia com 200. Não há relação de categorias nem
+parâmetro `categoria`; consumidores devem continuar usando `tag`.
+
+Preços: de 0 a 99999999.99, até duas casas decimais. Valores vazios, não numéricos,
+negativos, não finitos, com precisão excessiva ou faixa invertida retornam 400.
+Limite ausente não restringe; zero é aplicado normalmente. Não são filtros de
+`salario_minimo`/`salario_maximo`, que continuam campos independentes da resposta.
+
+Novas escolhas: vazio não restringe; opções inexistentes, com caixa/acentos diferentes
+ou espaços adicionais retornam 400. Uma escolha válida sem correspondências retorna
+200 com coleção vazia. Parâmetros repetidos usam o último valor, preservando o
+comportamento anterior. Parâmetros desconhecidos são ignorados, inclusive
+`categoria`, `modalidade`, `status` e `page_size`; não devem ser usados como filtros.
+
+## E. Estruturas JSON
+
+Exemplos ilustrativos dos campos reais do serializer, sem inclusão de dados artificiais
+nas respostas da aplicação. O tamanho de página continua 10; uma coleção de um item:
 
 ```json
 {
@@ -71,93 +141,159 @@ Uma coleção com apenas uma oportunidade:
       "tag": "design",
       "preco": "100.00",
       "tempo": "1 dia",
+      "requisitos": "",
+      "beneficios": "",
+      "tipo_contratacao": "PJ",
+      "nivel_experiencia": "Pleno",
+      "jornada_trabalho": "",
+      "data_publicacao": null,
+      "salario_minimo": null,
+      "salario_maximo": null,
       "empresa": 2
     }
   ]
 }
 ```
 
-Em uma coleção com 11 itens, a primeira página contém 10 objetos e:
-`count: 11`, `previous: null`,
-`next: "http://testserver/api/freelances/?page=2"` no host de testes.
-A segunda contém um objeto, `next: null` e
-`previous: "http://testserver/api/freelances/"`.
-Em produção os links usam o host da requisição e preservam pesquisa/filtros.
-
-Detalhe (200):
+Detalhe por ID (200), com os mesmos 15 campos:
 
 ```json
-{"id":1,"titulo":"Designer","descricao":null,"tag":"design","preco":"100.00","tempo":"1 dia","empresa":2}
+{
+  "id": 1,
+  "titulo": "Designer",
+  "descricao": null,
+  "tag": "design",
+  "preco": "100.00",
+  "tempo": "1 dia",
+  "requisitos": "",
+  "beneficios": "",
+  "tipo_contratacao": "PJ",
+  "nivel_experiencia": "Pleno",
+  "jornada_trabalho": "",
+  "data_publicacao": null,
+  "salario_minimo": null,
+  "salario_maximo": null,
+  "empresa": 2
+}
 ```
 
-`empresa` é apenas o ID, aceita null para registros legados; dados privados da
-conta não são incluídos. `descricao` e `tag` também aceitam null. Preço é string decimal.
+`empresa` é somente o ID e pode ser null em registros legados. `descricao` e `tag`
+também aceitam null. Os textos complementares ausentes retornam `""`, datas usam
+`YYYY-MM-DD` ou null, e valores monetários retornam strings com duas casas decimais
+ou null quando opcionais. Dados de candidatos, telefone e credenciais não integram
+a resposta. Informações públicas adicionais da empresa não têm objeto aninhado
+neste contrato; o vínculo existente por ID foi preservado.
+
 Sem resultados (200):
 
 ```json
-{"count":0,"next":null,"previous":null,"results":[]}
+{"count": 0, "next": null, "previous": null, "results": []}
 ```
 
-Intervalo invertido (400):
+Filtros inválidos, exemplo com `preco_min=2&preco_max=1` (400):
 
 ```json
-{"preco_max":["Deve ser maior ou igual a preco_min."]}
+{"preco_max": ["Deve ser maior ou igual a preco_min."]}
 ```
 
-Outros erros de filtros usam listas de mensagens por parâmetro, por exemplo
-`{"preco_min":["..."]}`. A redação padrão do DRF depende da localização.
-401 indica JWT ausente/inválido; 403 indica escrita sem permissão;
-404 indica ID inexistente ou página inválida. Esses erros usam `{"detail":"..."}`.
-Páginas zero, negativas, não numéricas e fora do intervalo retornam 404.
+Escolhas inválidas e outros erros de validação também retornam listas de mensagens
+por parâmetro. O texto padrão é localizado pelo DRF. JWT inválido, escrita proibida,
+ID inexistente e página inválida usam `{"detail": "..."}`, com 401, 403 e 404 conforme
+o caso. Páginas zero, negativas, não numéricas e fora do intervalo retornam 404.
+Página 1 de uma coleção vazia retorna 200.
 
-## Limitações e compatibilidade
+## F. Testes executados
 
-`tag` é texto livre, não uma categoria controlada. O frontend pode filtrar por
-esse campo imediatamente, mas sua equivalência a categoria exige definição da
-equipe. Não existem modalidade, experiência, jornada ou tipo de contratação.
-`tempo` não tem semântica de jornada confirmada. Nenhum filtro para esses conceitos
-foi criado. Moeda e periodicidade de preço também não estão definidas no model.
+Ambiente PDM existente: versão 2.24.2, Python 3.13, Django 5.2.12 e DRF 3.16.1.
+Não foi necessário instalar dependências. Todos os comandos Python foram executados
+com `pdm run`, usando `core.tests.settings`: SQLite exclusivamente em memória.
+A configuração de produção e o banco local não foram alterados.
 
-Listagem, detalhe, busca, tag, intervalo de preço e paginação combinados estão
-disponíveis sem mudanças no frontend ou nas respostas usadas pela FEAT-38.
-Não foram alterados models, serializers, permissões, rotas ou migrations.
-Nenhuma migration foi necessária para implementar pesquisa, filtros e paginação.
-
-## Validação isolada
-
-Configuração `core.tests.settings`: SQLite em memória, sem banco da aplicação.
-PDM disponível, mas o interpretador salvo estava indisponível e o `.venv` local
-não contém Django. O apontamento `.pdm-python` foi preservado no estado original.
-Usado `/tmp/feat38-venv/bin/python`, sem instalar dependências ou mudar lockfile.
-O ambiente não reproduz integralmente o lockfile. Cloudinary recebe credenciais
-fictícias no processo para permitir a importação dos testes existentes de perfil;
-as chamadas de armazenamento desses testes são simuladas.
-
-```bash
-/tmp/feat38-venv/bin/python -B manage.py check --settings=core.tests.settings
-/tmp/feat38-venv/bin/python -B manage.py makemigrations --check --dry-run --settings=core.tests.settings
-CLOUDINARY_CLOUD_NAME=test CLOUDINARY_API_KEY=test CLOUDINARY_API_SECRET=test /tmp/feat38-venv/bin/python -B manage.py test --settings=core.tests.settings -v 1
+```powershell
+pdm run python -B manage.py check --settings=core.tests.settings
+pdm run python -B manage.py test core.tests.test_opportunity_queries core.tests.test_freelances core.tests.test_freelance_complementos --settings=core.tests.settings -v 1
+pdm run python -B manage.py test core.tests.test_opportunity_queries --settings=core.tests.settings -v 2
+pdm run python -B manage.py test --settings=core.tests.settings -v 1
+pdm run python -B manage.py makemigrations --check --dry-run --settings=core.tests.settings
+pdm run ruff check core/views/freelance.py core/tests/test_opportunity_queries.py
+pdm run ruff format --check core/views/freelance.py core/tests/test_opportunity_queries.py
+git diff --check
+git diff --stat
+git status --short
 ```
 
-A validação não comprova comportamento em PostgreSQL; em particular, comparação
-sem distinção de caixa depende da collation e do banco. Não houve migrations
-no banco da aplicação, alteração de dados reais ou operações de integração Git.
-No SQLite usado nos testes, `árvore` não encontra `Árvore`, e `área` não encontra
-a tag `ÁREA`: a comparação sem distinção de caixa tem limitações para Unicode.
-Esta correção não implementa normalização Unicode ou remoção de acentos.
+| Execução | Resultado |
+| --- | --- |
+| Oportunidades antes da alteração | 47 testes aprovados |
+| Suíte completa antes da alteração | 174 testes aprovados |
+| Consultas após os novos filtros | 29 testes aprovados, incluindo 13 novos |
+| Suíte completa final | 187 testes aprovados, zero falhas |
+| Django check | Sem problemas |
+| Models/migrations, somente check/dry-run | Nenhuma alteração pendente |
+| Ruff dos dois arquivos Python alterados | Sem erros; formatação aprovada |
+| Revisão de diff | Sem erros de whitespace |
 
-Resultado anterior à correção de robustez: 81 testes preexistentes e 10 novos, total de 91 executados e
-aprovados, sem falhas. A primeira tentativa encontrou erro de importação por
-configuração Cloudinary ausente; a execução seguinte identificou dois subcasos
-de preço vazio, corrigidos antes da execução final. Aviso não impeditivo:
-diretório `staticfiles/` ausente. System check sem problemas; nenhuma mudança
-de model pendente; grafo sem conflitos, com folha core
-`0016_merge_20261030_1516` já existente. `git diff --check` aprovado.
+Os novos testes cobrem todas as escolhas do modelo, parâmetros vazios/inválidos,
+combinação dos seis filtros com três páginas (10/10/1), links que preservam os
+parâmetros, ausência de duplicatas, última página, repetição de parâmetros,
+desconhecidos, tag longa, pesquisa acentuada, dados opcionais nulos, datas futuras,
+JWT real de empresa/freelancer, preservação do CRUD e contrato OpenAPI.
 
-Após a correção de robustez: seis testes de regressão adicionais; 16 testes do
-módulo de consultas aprovados na execução direcionada e 97 testes aprovados na
-suíte completa (incluindo FEAT-34 e FEAT-38), sem falhas. Os casos excessivos,
-incluindo 1.100 termos, verificam HTTP 400 e zero consultas SQL com autenticação
-forçada no teste. System check, consistência models/migrations e grafo de
-migrations continuam aprovados. Nenhuma migration criada ou aplicada no banco
-da aplicação.
+A suíte completa inclui regressões de FEAT-34, favoritos, complementos das vagas,
+FEAT-41, FEAT-44, autenticação e perfis/portfólios. Criação/edição autorizadas,
+propriedade, grupos, aprovação/recusa e privacidade continuam cobertos pelos testes
+existentes. Nenhum teste falhou. A primeira execução de lint apontou dois números
+literais preexistentes na pesquisa; foram nomeados sem alterar os limites, e a
+validação final passou.
+
+O teste de consultas SQL confirma duas consultas na listagem (contagem e página)
+e uma no detalhe, com autenticação forçada para isolar o custo da consulta de vagas.
+Não existe N+1 de empresa: apenas a chave estrangeira é serializada, portanto não
+foi necessário adicionar joins ou prefetch. A autenticação JWT acrescenta seu próprio
+custo, fora dessa contagem isolada.
+
+Limitações: testes em SQLite, sem comprovação de collation/desempenho no PostgreSQL.
+Aviso preexistente não impeditivo de diretório `staticfiles/` ausente. Mensagens de
+credenciais Google rejeitadas são esperadas nos testes negativos de autenticação.
+Não há falhas de teste pendentes identificadas.
+
+## G. Integração frontend
+
+Enviar JWT no cabeçalho de cada consulta. Usar GET `/api/freelances/` e consumir
+`results`, `count`, `next` e `previous`. Seguir diretamente os links de navegação,
+que preservam filtros/pesquisa; `null` indica ausência de página seguinte/anterior.
+A ordenação é sempre `id` crescente e não muda com os filtros. A paginação por número
+pressupõe conjunto estável: alterações concorrentes dos registros podem deslocar
+itens entre requisições, como no contrato anterior.
+
+Exemplo de consulta combinada:
+
+```http
+GET /api/freelances/?search=designer&tag=design&preco_min=100&preco_max=500&tipo_contratacao=PJ&nivel_experiencia=Pleno&page=2
+Authorization: Bearer <access>
+```
+
+Construir parâmetros com codificação de URL, especialmente espaços e acentos.
+Enviar as escolhas exatamente como documentadas. Na interface de categoria, usar
+`tag`, que é texto livre; não existe endpoint de catálogo de categorias. `preco` é
+o pagamento existente, e a faixa salarial opcional deve ser exibida separadamente.
+Renderizar detalhes via GET `/api/freelances/{id}/` e tratar strings vazias/nulls.
+Não enviar filtros da coleção para restringir o detalhe. Tratar 400 como validação,
+401 como autenticação, 403 como falta de permissão e 404 como ID/página inexistente.
+Nenhum arquivo do frontend foi acessado ou modificado nesta execução.
+
+## H. Resultado final
+
+**CONCLUÍDA**, para os requisitos aplicáveis ao modelo atual: consulta, detalhes,
+pesquisa, tag, preço, novos filtros e paginação combinada validados; permissões e
+integrações preservadas, com 187 testes aprovados. Modelos sem modalidade/status
+não receberam campos ou regras artificiais. Nenhuma regressão conhecida na suíte.
+
+A revisão final limita a entrega aos três arquivos indicados. Alterações iniciais
+do usuário em `.pdm-python`, `.vscode/settings.json` e `db.sqlite3` foram preservadas.
+Não houve acesso ao Front_marujob, criação de arquivos de frontend, dependências,
+migrations novas, mudanças de produção, troca de branch, merge, rebase ou deploy.
+
+Após a validação, o usuário autorizou commit, push e abertura de PR da branch
+`FEAT-37` para `DEV`, incluindo somente os três arquivos desta entrega e preservando
+as alterações locais preexistentes.
