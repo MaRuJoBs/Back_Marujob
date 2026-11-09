@@ -104,6 +104,8 @@ class UserProfileSerializer(SafeImageStorageMixin, serializers.ModelSerializer):
             'profile_image',
             'profissao',
             'localizacao',
+            'perfil_publico',
+            'cidade_publica',
             'latitude',
             'longitude',
             'geolocation_accuracy',
@@ -123,7 +125,19 @@ class UserProfileSerializer(SafeImageStorageMixin, serializers.ModelSerializer):
             'perfil_configurado',
         ]
 
+    def validate_cidade_publica(self, value):
+        return ' '.join(value.split())
+
     def validate(self, attrs):
+        publication_fields = {'perfil_publico', 'cidade_publica'} & attrs.keys()
+        if publication_fields and (
+            not self.instance or account_type(self.instance) != 'usuario'
+            or self.instance.is_staff or self.instance.is_superuser
+        ):
+            raise serializers.ValidationError({
+                field: 'Somente o próprio freelancer pode editar a divulgação.'
+                for field in publication_fields
+            })
         latitude = attrs.get('latitude', self.instance.latitude if self.instance else None)
 
         longitude = attrs.get('longitude', self.instance.longitude if self.instance else None)

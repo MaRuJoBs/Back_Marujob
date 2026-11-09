@@ -26,11 +26,13 @@ from core.views import (
     UserRegistrationView,
     UserViewSet,
 )
+from core.views.freelancer_publico import FreelancerPublicoViewSet
 
 router = DefaultRouter()
 
 router.register(r'usuarios', UserViewSet, basename='usuarios')
 router.register(r'freelances', FreelanceViewSet, basename='freelances')
+router.register(r'freelancers', FreelancerPublicoViewSet, basename='freelancers')
 router.register(r'portfolios', PortfolioViewSet, basename='portfolios')
 router.register(r'favoritos', FavoritoViewSet, basename='favoritos')
 router.register(r'candidaturas', CandidaturaViewSet, basename='candidaturas')

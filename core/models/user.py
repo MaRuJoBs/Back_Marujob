@@ -79,6 +79,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         default='',
     )
+    perfil_publico = models.BooleanField(default=False)
+    cidade_publica = models.CharField(max_length=120, blank=True, default='')
+
     latitude = models.FloatField(
         null=True,
         blank=True,

@@ -20,6 +20,7 @@ class Portfolio(models.Model):
     descricao = models.TextField()
     tags = models.JSONField(default=list, blank=True)
     link = models.URLField(blank=True)
-    
+    publico = models.BooleanField(default=False)
+
     def __str__(self):
         return self.titulo

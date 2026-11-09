@@ -18,5 +18,6 @@ class PortfolioSerializer(SafeImageStorageMixin, serializers.ModelSerializer):
             'descricao',
             'tags',
             'link',
+            'publico',
         ]
         read_only_fields = ['id']
