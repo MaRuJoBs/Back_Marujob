@@ -1,11 +1,15 @@
-"""B45 restricted directory. No existing profile has publication authorization."""
+"""Company-only directory of freelancers with explicit publication consent."""
 
+import re
+
+from django.db.models import F, Prefetch, Value
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
-from core.models import User
+from core.freelancer_filters import HabilidadeIExact
+from core.models import Portfolio, User
 from core.permissions import account_type
 from core.serializers.freelancer_publico import (
     FreelancerPublicoDetailSerializer,
@@ -25,20 +29,21 @@ class EmpresaDiretorioPermission(BasePermission):
 
 @extend_schema_view(
     list=extend_schema(
-        summary='Diretório de freelancers (entrega parcial)',
+        summary='Diretório de freelancers publicados',
         description=(
-            'Exige JWT e tipo Empresa inequívoco. Retorna lista vazia enquanto não houver '
-            'autorização de publicação de perfis. Filtros não vazios retornam 400; '
-            'não há campos profissionais públicos aprovados.'
+            'Exige JWT e tipo Empresa inequívoco. Somente freelancers ativos, não administrativos '
+            'e com perfil_publico=true. Busca parcial por nome/profissão; cidade e habilidade '
+            'por igualdade sem distinguir caixa. Filtros cumulativos antes da paginação por ID.'
         ),
         parameters=[FreelancerPublicoQuerySerializer],
         responses={200: FreelancerPublicoListSerializer(many=True), 400: None, 401: None, 403: None},
     ),
     retrieve=extend_schema(
-        summary='Perfil autorizado de freelancer (entrega parcial)',
+        summary='Perfil público de freelancer',
         description=(
-            'Exige JWT e Empresa. Atualmente retorna 404 para todo ID: '
-            'não existe autorização de publicação. Portfólios permanecem privados.'
+            'Exige JWT e Empresa. Perfil privado ou inelegível retorna 404. '
+            'Inclui apenas projetos com publico=true, ordenados por ID. '
+            'Revogar perfil_publico oculta imediatamente perfil e projetos do diretório.'
         ),
         responses={200: FreelancerPublicoDetailSerializer, 401: None, 403: None, 404: None},
     ),
@@ -55,11 +60,27 @@ class FreelancerPublicoViewSet(ReadOnlyModelViewSet):
         return self.serializer_class
 
     def get_queryset(self):
-        # Never infer consent from group membership or perfil_configurado.
-        # Replace this gate only when an approved publication mechanism exists.
-        return User.objects.none().order_by('id')
-
-    def list(self, request, *args, **kwargs):
-        query = FreelancerPublicoQuerySerializer(data=request.query_params)
+        queryset = User.objects.filter(
+            perfil_publico=True, is_active=True, is_staff=False, is_superuser=False,
+            groups__name='Usuário',
+        ).exclude(groups__name='Empresa').order_by('id')
+        if self.action == 'retrieve':
+            return queryset.prefetch_related(Prefetch(
+                'portfolios', queryset=Portfolio.objects.filter(publico=True).order_by('id'),
+                to_attr='portfolio_publicado',
+            ))
+        query = FreelancerPublicoQuerySerializer(data=self.request.query_params)
         query.is_valid(raise_exception=True)
-        return super().list(request, *args, **kwargs)
+        values = query.validated_data
+        for param, field in (
+            ('search', 'name__iregex'), ('profissao', 'profissao__iregex'),
+            ('cidade', 'cidade_publica__iregex'),
+        ):
+            if values.get(param):
+                pattern = re.escape(values[param])
+                if param == 'cidade':
+                    pattern = r'\A' + pattern + r'\Z'
+                queryset = queryset.filter(**{field: pattern})
+        if values.get('habilidade'):
+            queryset = queryset.filter(HabilidadeIExact(F('habilidades'), Value(values['habilidade'])))
+        return queryset

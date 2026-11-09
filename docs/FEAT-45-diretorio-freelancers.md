@@ -1,197 +1,249 @@
-# B45 — Diretório de freelancers: entrega parcial
+﻿# FEAT-45 — Diretório de freelancers e perfis públicos
 
-## A. Diagnóstico inicial
+## Diagnóstico e solução
 
-Repositório confirmado por `pwd` e `git rev-parse --show-toplevel`:
-`Back_Marujob`, branch `FEAT-45`. O backend usa Django, DRF, SimpleJWT,
-DRF Spectacular e módulos `core/models`, `core/views`, `core/serializers`,
-`core/tests`. Não foi encontrada implementação anterior de `/api/freelancers/`.
+Branch `FEAT-45`, repositório `MaRuJoBs/Back_Marujob`, PR existente #19 para `DEV`.
+A implementação anterior retornava queryset vazio e rejeitava filtros preenchidos,
+pois B39/B40 não possuíam autorização de publicação. Esta revisão implementa essa
+autorização explicitamente e mantém usuários/projetos existentes privados.
 
-Alterações locais preexistentes preservadas: `.pdm-python`, `.vscode/settings.json`,
-`core.png`, `db.sqlite3`, `media/portfolios/image.png`, `media/users/image.png`.
+Reutiliza JWT/SimpleJWT e `account_type` da B39, edição do perfil próprio e CRUD de
+portfólio da B40, paginação DRF de 10 itens e as duas rotas já registradas.
+Não cria endpoints duplicados nem modifica `/api/freelances/`.
 
-B39 disponível: `core.User`, JWT, grupos `Usuário`/`Empresa` e helper
-`core.permissions.account_type`. Grupos são ManyToMany: ambos podem coexistir,
-mas o helper retorna `None` para essa combinação. A B45 reutiliza essa decisão.
-Grupos adicionais não alteram o tipo quando há apenas um dos dois grupos de conta.
+## Autorizar e revogar o perfil
 
-B40 disponível: perfil próprio e portfólios privados do proprietário.
-`User` persiste `name` e `profile_image` opcionais, `profissao`, `localizacao`,
-`sobre`, `telefone` com padrão vazio, `habilidades` em JSONField (lista validada
-nas escritas do perfil), flags de configuração e dados GPS opcionais.
-`Portfolio.usuario` aponta para `User`, related_name `portfolios`; projetos têm
-título, categoria, descrição, tags JSON, link e imagem opcional.
+Bearer access JWT obrigatório. O próprio freelancer de tipo inequívoco `Usuário`,
+sem privilégios administrativos, pode usar o endpoint existente:
 
-**Impedimento de privacidade:** não existe campo ou mecanismo de consentimento
-para publicação de perfis ou portfólios. A documentação B40, seção de publicação,
-registra expressamente essa pendência. `perfil_configurado` indica preenchimento,
-não consentimento. `localizacao` é texto livre e pode conter endereço residencial;
-não existe campo público de cidade. Autenticação e persistência estão disponíveis,
-mas a dependência de divulgação pública não está resolvida.
+```http
+PATCH /api/usuarios/me/
+Content-Type: application/json
+Authorization: Bearer <access>
+```
 
-## B. Implementação realizada
+```json
+{"perfil_publico":true,"cidade_publica":"Joinville"}
+```
 
-| Arquivo | Alteração |
+O GET e o PATCH de `/api/usuarios/me/` retornam os campos antigos e os dois novos.
+`cidade_publica` aceita até 120 caracteres, pode ficar vazia e normaliza espaços.
+Nunca é preenchida a partir de `localizacao` ou coordenadas. A cidade é declarada
+pelo proprietário: não há consulta a cadastro de municípios ou geolocalização.
+Tentativas de editar esses campos por empresa, conta ambígua/sem grupo ou
+administrativa retornam 400 por campo. As demais edições privadas continuam
+seguindo B39/B40. A rota `/me/` sempre edita apenas a conta autenticada.
+
+`perfil_publico=true` autoriza divulgar nome (`name`), profissão, cidade pública,
+habilidades, descrição (`sobre`), foto de perfil e projetos marcados públicos.
+Esses campos refletem as futuras edições do perfil enquanto publicado.
+`perfil_configurado` mantém a semântica antiga e não concede publicação.
+Campos opcionais vazios não impedem a publicação; foto e nome podem ser null.
+
+Revogação imediata nas próximas consultas do diretório:
+
+```json
+{"perfil_publico":false}
+```
+
+Não há cache de perfis públicos. Revogar o perfil também impede a consulta dos
+seus projetos pelo diretório, mesmo quando os projetos continuam marcados públicos.
+A revogação não apaga dados e não desfaz cópias já recebidas por uma empresa.
+
+## Publicar projetos
+
+Use os endpoints privados existentes, com JWT do proprietário freelancer:
+
+- POST `/api/portfolios/`: novo campo opcional `publico`, padrão false.
+- PATCH/PUT `/api/portfolios/{id}/`: `publico: true` publica; false revoga.
+- GET e listagem privados retornam os campos antigos e `publico`.
+- DELETE mantém o comportamento B40.
+
+Exemplo de PATCH:
+
+```json
+{"publico":true}
+```
+
+B40 já restringe escrita a freelancer e queryset ao proprietário: outro freelancer
+recebe 404, empresa recebe 403 em escrita. Informar `usuario` de terceiros não
+altera o proprietário. Publicar projeto não publica automaticamente o perfil.
+JSON e multipart continuam suportados, incluindo flags true/false textuais.
+
+## Diretório empresarial
+
+Ambas as rotas exigem JWT válido e tipo inequívoco Empresa conforme `account_type`.
+Contas com ambos os grupos `Usuário`/`Empresa` não têm tipo inequívoco. Grupos
+adicionais sem esses nomes não impedem a classificação já estabelecida na B39.
+
+```http
+GET /api/freelancers/?search=ana&cidade=Joinville&habilidade=Python
+GET /api/freelancers/{id}/
+```
+
+Somente usuários com `perfil_publico=true`, ativos, pertencentes a `Usuário`,
+sem grupo `Empresa`, `is_staff=false` e `is_superuser=false` são consultados.
+A elegibilidade é aplicada no queryset antes da busca por ID e dos filtros.
+
+### Busca, filtros e paginação
+
+| Parâmetro | Regra |
 | --- | --- |
-| `core/views/freelancer_publico.py` | ViewSet somente leitura, permissão empresarial, queryset restritivo, paginação e OpenAPI |
-| `core/serializers/freelancer_publico.py` | Serializers independentes e validação explícita dos parâmetros |
-| `core/tests/test_freelancer_publico.py` | 18 testes de API, segurança, contrato e schema |
-| `app/urls.py` | Um import e um registro no router |
-| `docs/FEAT-45-diretorio-freelancers.md` | Auditoria, contrato real, validação e pendências |
+| `search` | Nome, correspondência parcial literal, até 255 caracteres |
+| `profissao` | Profissão, correspondência parcial literal, até 255 caracteres |
+| `habilidade` | Elemento inteiro da lista JSON, até 100 caracteres |
+| `cidade` | Igualdade com `cidade_publica`, até 120 caracteres |
+| `page` | Inteiro entre 1 e 1000000, padrão 1; 10 resultados por página |
 
-Sem models, migrations, dependências ou alterações de autenticação.
-`/api/freelances/` e as demais rotas existentes foram preservadas.
+Comparações não distinguem caixa. Espaços externos e consecutivos dos filtros são
+normalizados; filtros vazios não restringem resultados. Todos os filtros são
+cumulativos e aplicados no banco antes da contagem e paginação. Ordem estável por
+ID, sem repetições de contas, inclusive com grupos extras ou habilidades repetidas.
+Sem resultados: 200 com count 0. Página inexistente: 404. Parâmetros desconhecidos,
+repetidos, maiores que os limites e página inválida/vazia: 400. Não há `ordering`
+ou `page_size` arbitrários. Os filtros são documentados para a listagem.
 
-`FreelancerPublicoListSerializer` permite apenas `id`;
-`FreelancerPublicoDetailSerializer` permite `id` e `portfolio` vazio.
-Esses contratos mínimos **não tornam nenhum perfil elegível**. Nome, profissão,
-habilidades, foto e descrição aguardam política de publicação; localização livre
-não pode ser promovida automaticamente a cidade pública.
+Busca textual usa ORM `iregex` com valores escapados; expressões fornecidas pelo
+cliente são literais. Habilidades usam expressão ORM própria com SQL fixo por
+backend e valores vinculados: SQLite `json_each` e PostgreSQL `jsonb_array_elements`.
+A expressão exige array e elemento string; objetos, arrays aninhados, números e
+strings JSON isoladas não são tratados como listas de habilidades. `Python` não
+corresponde a `Pythonista`; símbolos como `C++` e `Vue.js` são literais. As funções
+seguem as referências oficiais de [SQLite](https://www.sqlite.org/json1.html) e
+[PostgreSQL](https://www.postgresql.org/docs/17/functions-json.html).
+Não há filtragem de usuários em memória ou interpolação de valores do cliente no SQL.
+Backends cobertos: SQLite e PostgreSQL, conforme dependências existentes. A comparação
+Unicode no PostgreSQL segue a collation configurada no banco; testes executáveis
+locais cobrem SQLite e a compilação SQL PostgreSQL, sem homologação em servidor PostgreSQL.
 
-## C. Contrato efetivamente implementado
+### Resposta de listagem
 
-Todas as requisições exigem `Authorization: Bearer <access JWT>` e tipo inequívoco
-`empresa`, determinado no banco pelo helper B39. Um superusuário sem tipo Empresa
-não recebe exceção de acesso. Tokens usam a autenticação global existente.
-
-### GET /api/freelancers/
-
-Empresa autenticada: HTTP 200, inclusive havendo perfis completos no banco:
-
-```json
-{"count":0,"next":null,"previous":null,"results":[]}
-```
-
-Utiliza `PageNumberPagination`, padrão global de 10 registros por página,
-sem `page_size` configurável. Ordenação por ID. Queryset vazio deliberado:
-nenhum perfil possui autorização comprovada; não carrega perfis/portfólios.
-
-| Parâmetro | Validação e comportamento atual |
-| --- | --- |
-| `search` | Até 255 caracteres, reservado; não vazio retorna 400 |
-| `profissao` | Até 255 caracteres, reservado; não vazio retorna 400 |
-| `habilidade` | Até 100 caracteres, reservado; não vazio retorna 400 |
-| `cidade` | Até 255 caracteres, reservado; não vazio retorna 400 |
-| `page` | Inteiro entre 1 e 1000000; padrão 1; página inexistente retorna 404 |
-
-Espaços externos e consecutivos são normalizados nos filtros; filtros vazios são
-aceitos. Filtros repetidos, parâmetros desconhecidos, `ordering`, `page_size` e
-`page` vazio ou inválido retornam 400. Filtros combinados não vazios também retornam
-400, com erro por campo. Não há busca operacional ou filtragem profissional
-implementada: rejeitar explicitamente evita aparentar suporte ou pesquisar dados
-que ainda não têm autorização de divulgação. Não há SQL manual.
-
-GET `/api/freelancers/?habilidade=Python` retorna HTTP 400:
+Exemplo ilustrativo compatível com o contrato implementado:
 
 ```json
-{"habilidade":["Filtro indisponível até a definição e implementação da divulgação autorizada."]}
+{
+  "count":1,
+  "next":null,
+  "previous":null,
+  "results":[{
+    "id":12,
+    "nome":"Ana Silva",
+    "profissao":"Designer",
+    "cidade":"Joinville",
+    "habilidades":["Python","Figma"],
+    "foto_perfil":null
+  }]
+}
 ```
 
-### GET /api/freelancers/{id}/
-
-Empresa autenticada recebe HTTP 404 para qualquer ID, existente ou não.
-O `get_object()` do DRF consulta exclusivamente o queryset restritivo:
-não procura no conjunto completo de usuários antes de ocultar o resultado.
-O corpo contém apenas `detail`, com mensagem padrão traduzida do DRF.
-Não existe exemplo honesto de resposta 200 deste endpoint nesta entrega.
-
-Contrato unitário do serializer de detalhe, **não uma resposta HTTP disponível**:
+### Resposta de detalhe
 
 ```json
-{"id":42,"portfolio":[]}
+{
+  "id":12,
+  "nome":"Ana Silva",
+  "profissao":"Designer",
+  "cidade":"Joinville",
+  "habilidades":["Python","Figma"],
+  "foto_perfil":null,
+  "descricao":"Design e desenvolvimento de interfaces.",
+  "portfolio":[{
+    "id":3,
+    "titulo":"Sistema de gerenciamento",
+    "categoria":"Design",
+    "descricao":"Projeto autorizado pelo proprietário.",
+    "tags":["Figma"],
+    "link":"https://example.com",
+    "imagem":null
+  }]
+}
 ```
 
-Ambas as rotas: sem JWT, inválido, expirado ou conta inativa: 401;
-freelancer, conta sem tipo ou com ambos os grupos: 403. Escrita por empresa:
-405. A definição OpenAPI identifica a entrega parcial, os parâmetros, os códigos
-e o bloqueio atual; aparece no schema/documentação existentes.
+Os IDs e textos dos exemplos não são dados reais. Imagens usam o storage/contexto
+da requisição como na B40; imagem ausente retorna null e URLs locais podem ser
+absolutas. Portfólio sem projetos publicados retorna `[]`.
 
-## D. Segurança
+### HTTP e privacidade
 
-Nenhum perfil é exposto, incluindo empresas, contas administrativas, inativas,
-sem grupo, com ambos os grupos ou freelancers com perfil configurado.
-Nenhum campo pessoal/profissional é publicado enquanto faltar autorização.
-Serializers públicos não herdam dos serializers privados e usam lista explícita.
-Não retornam e-mail, telefone, senha, privilégios, grupos, permissões, tokens,
-Google ID, login, coordenadas, precisão, timestamps GPS ou endereço residencial.
+- 200: empresa autorizada, listagem ou detalhe elegível.
+- 400: query params inválidos ou edição inválida nos endpoints privados.
+- 401: JWT ausente, inválido, expirado ou conta autenticada inativa.
+- 403: acesso ao diretório por freelancer ou conta sem tipo empresarial inequívoco.
+- 404: perfil privado, inexistente ou inelegível; página inexistente.
+- 405: tentativa de escrita nos endpoints do diretório.
 
-Portfólios são sempre omitidos da API: não há consultas nem acesso ao storage.
-O contrato de detalhe mantém `portfolio: []`, mesmo quando aplicado isoladamente
-a um usuário com projetos. Não foi inventado serializer de projeto público sem
-campos autorizados. A privacidade das URLs de mídia preexistentes é assunto
-pendente da B40; esta entrega não altera storage nem divulga URLs.
+Serializers públicos são independentes dos privados, com allowlist explícita:
+`FreelancerPublicoListSerializer`, `FreelancerPublicoDetailSerializer` e
+`PortfolioPublicoSerializer`. Não incluem e-mail, telefone, senha, Google ID,
+localização privada, GPS, grupos, permissões, dados administrativos ou tokens.
+Projetos públicos nunca incluem dados internos do proprietário ou flag de publicação.
+Detalhe faz prefetch somente de projetos autorizados, ordenados por ID; listagem
+não consulta projetos. Testes verificam quatro queries por listagem/detalhe com JWT.
 
-## E. Testes e verificações
+O diretório restringe a divulgação de links de imagens; a proteção direta de URLs
+já conhecidas continua dependendo do storage da B40. Despublicação não invalida
+links de mídia anteriormente compartilhados. Nenhuma alteração de storage está
+incluída nesta revisão.
 
-Ambiente usa bibliotecas locais, sem instalar dependências:
+Schema/Swagger existentes em `/api/schema/` e `/api/doc/` refletem o contrato final,
+os campos adicionados aos serializers privados e as regras de acesso.
+
+## Migration e compatibilidade
+
+Migration gerada pelo Django: `0021_publicacao_perfil_portfolio`, dependente de
+`0020_freelance_complementos`, sem alteração de migrations antigas:
+
+- `User.perfil_publico`: boolean, default false.
+- `User.cidade_publica`: texto de até 120 caracteres, default vazio.
+- `Portfolio.publico`: boolean, default false.
+
+Nenhum dado privado é copiado ou publicado automaticamente. Migration testada em
+banco exclusivamente em memória: registros anteriores mantêm dados e permanecem
+privados. Nenhuma migration foi executada no banco de desenvolvimento/produção.
+É necessário aplicar a migration em ambiente autorizado antes de utilizar a versão
+nova; o código novo depende dessas colunas. Frontend pode integrar os campos novos
+nos endpoints existentes, sem nova API de edição.
+
+Arquivos alterados: models de usuário/portfólio, serializers privados correspondentes,
+serializers/view/testes B45 e esta documentação. Novos: `core/freelancer_filters.py`
+e `core/migrations/0021_publicacao_perfil_portfolio.py`. Autenticação, router, vagas,
+favoritos, candidaturas e notificações não foram alterados nesta revisão.
+
+## Validação
+
+Bibliotecas locais já instaladas, sem novas dependências:
 
 ```powershell
 $env:PYTHONPATH = "$PWD\__pypackages__\3.13\lib"
 python manage.py check
-python manage.py check --settings=core.tests.settings
+python manage.py makemigrations --check --dry-run --settings=core.tests.settings
 python manage.py test core.tests.test_freelancer_publico --settings=core.tests.settings --noinput
 python manage.py test --settings=core.tests.settings --noinput
-& ./__pypackages__/3.13/Scripts/ruff.exe check app/urls.py core/views/freelancer_publico.py core/serializers/freelancer_publico.py core/tests/test_freelancer_publico.py
+& ./__pypackages__/3.13/Scripts/ruff.exe check core/freelancer_filters.py core/models/user.py core/models/portfolio.py core/serializers/user.py core/serializers/portfolio.py core/serializers/freelancer_publico.py core/views/freelancer_publico.py core/tests/test_freelancer_publico.py
 git diff --check
 git status --short
 git diff --stat
 ```
 
-Banco de testes SQLite exclusivamente em memória via settings já existentes.
-Nenhuma migration foi aplicada ao banco da aplicação.
+37 testes B45 aprovados, cobrindo JWT, classificação por grupos, exclusões,
+publicação/revogação, privacidade em listagem/detalhe, filtros isolados/combinados,
+Unicode e metacaracteres literais, formatos JSON legados, páginas consecutivas,
+contagem, queries, projetos privados/públicos, CRUD, multipart, imagens, OpenAPI,
+compilação PostgreSQL e migration com registros legados. Suíte completa final:
+**224 testes aprovados**, incluindo os 37 da B45. Checks Django e migration dry-run
+aprovados, sem alterações de model pendentes.
 
-A primeira execução B45 encontrou uma falha real em `page=` vazio (tratamento
-HTML do QueryDict pelo DRF); validação explícita corrigida. A suíte completa
-posterior passou: **205 testes**, incluindo **18 B45** e regressões de autenticação,
-usuários, portfólios e demais módulos. Checks Django sem problemas.
+PostgreSQL não foi executado: não há postgres/psql disponíveis e o Docker local
+não tem daemon ativo. A consulta PostgreSQL foi compilada e a vinculação de
+parâmetros testada, mas isso não substitui homologação em servidor desse banco.
+Avisos preexistentes de `staticfiles` ausente e inferência de schema de outros
+módulos permanecem; não indicam falhas dos testes.
 
-Avisos existentes: pasta `staticfiles` ausente e inferência OpenAPI de tipos,
-querysets e componentes em outros módulos. Não são falhas dos testes.
-`python -m ruff` não encontrou o binário; foi utilizado o executável já instalado
-em `__pypackages__/3.13/Scripts/ruff.exe`, sem instalação.
+## Estado da entrega
 
-Cobertura B45: JWT real válido/inválido/expirado, inativação após emissão,
-grupos ambíguos, listagem paginada vazia, detalhes ocultos, campos opcionais,
-privacidade, portfólio não divulgado, filtros indisponíveis, parâmetros repetidos,
-desconhecidos, vazios e limites, read-only, rotas antigas e schema.
-A listagem executa duas consultas (JWT e grupos), sem consultas de perfis/projetos.
-
-Não há testes de sucesso de detalhes, busca, filtros com resultados, projetos
-publicados ou segunda página com registros: esses comportamentos não foram
-implementados por falta de autorização/modelagem. Não foram simulados como
-funcionalidades concluídas.
-
-## F. Pendências e critérios de aceite
-
-- [x] Isolamento do backend e preservação dos contratos B39/B40.
-- [x] JWT e bloqueio de acesso não empresarial, incluindo contas ambíguas.
-- [x] Serializers dedicados e não divulgação de dados e portfólios privados.
-- [x] Estrutura de paginação, documentação, testes e regressão.
-- [ ] Definir campos públicos aprovados e autorização revogável de perfil.
-- [ ] Implementar mecanismo de elegibilidade aprovado; substituir o queryset vazio.
-- [ ] Definir cidade pública separada de endereço livre/GPS.
-- [ ] Implementar busca e filtros sobre dados autorizados (habilidades são JSON).
-- [ ] Listar freelancers reais e consultar seus detalhes autorizados.
-- [ ] Validar primeira/segunda páginas com registros, ordem e filtros cumulativos.
-- [ ] Aprovar publicação explícita por projeto e regras de mídia da B40.
-- [ ] Implementar e testar retorno de projetos autorizados e exclusão de privados.
-
-Frontend: não apresentar filtros reservados como funcionais nem interpretar lista
-vazia como inexistência de freelancers cadastrados. A liberação exige novo acordo
-de contrato; não consumir os serializers privados para preencher lacunas.
-Possível conflito de integração restrito ao registro em `app/urls.py`; arquivos
-de usuário, permissões compartilhadas, models e portfólios permanecem intactos.
-
-## G. Estado final do Git
-
-Branch `FEAT-45`. Escopo B45: quatro arquivos novos (view, serializers, testes,
-documentação) e somente duas linhas adicionadas em `app/urls.py`.
-O `git diff --stat` padrão não inclui arquivos novos não rastreados; inclui
-alterações locais preexistentes que não pertencem à B45.
-Na entrega inicial, sem commit, push, merge, rebase, PR ou deploy.
-Posteriormente o usuário autorizou commit, envio da branch e abertura de PR para
-`DEV`, mantendo a identificação de entrega parcial. Merge, rebase e deploy
-continuam fora do escopo. Nenhum arquivo de frontend alterado.
-
-**Entrega parcial para revisão: o diretório operacional permanece bloqueado pela
-ausência de autorização de publicação. Não considerar a B45 concluída.**
+Implementação funcional pronta para revisão na PR #19, com uso dependente da
+aplicação da migration em ambiente autorizado. Após a validação, o usuário
+autorizou commit, envio da branch e atualização da PR #19 existente para DEV.
+Sem nova PR, merge, rebase ou deploy. Frontend intocado. Alterações locais
+preexistentes preservadas: `.pdm-python`, `.vscode/settings.json`, `core.png`,
+`db.sqlite3`, `media/portfolios/image.png` e `media/users/image.png`.
