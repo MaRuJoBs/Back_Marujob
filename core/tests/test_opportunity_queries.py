@@ -73,6 +73,10 @@ class OpportunityQueryTests(APITestCase):  # noqa: PLR0904 -- opportunity API in
                 'data_publicacao',
                 'salario_minimo',
                 'salario_maximo',
+                'modalidade',
+                'cidade',
+                'uf',
+                'status',
             },
         )
         self.assertIsNone(detail['empresa'])
