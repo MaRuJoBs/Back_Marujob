@@ -6,6 +6,49 @@ from django.db import models
 
 
 class Freelance(models.Model):
+    class Modalidade(models.TextChoices):
+        REMOTO = 'Remoto', 'Remoto'
+        HIBRIDO = 'Híbrido', 'Híbrido'
+        PRESENCIAL = 'Presencial', 'Presencial'
+
+    class Status(models.TextChoices):
+        PUBLICADA = 'publicada', 'Publicada'
+        ENCERRADA = 'encerrada', 'Encerrada'
+        CANCELADA = 'cancelada', 'Cancelada'
+
+    UF_CHOICES = tuple(
+        (uf, uf)
+        for uf in (
+            'AC',
+            'AL',
+            'AP',
+            'AM',
+            'BA',
+            'CE',
+            'DF',
+            'ES',
+            'GO',
+            'MA',
+            'MT',
+            'MS',
+            'MG',
+            'PA',
+            'PB',
+            'PR',
+            'PE',
+            'PI',
+            'RJ',
+            'RN',
+            'RS',
+            'RO',
+            'RR',
+            'SC',
+            'SP',
+            'SE',
+            'TO',
+        )
+    )
+
     class TipoContratacao(models.TextChoices):
         CLT = 'CLT', 'CLT'
         PJ = 'PJ', 'PJ'
@@ -33,6 +76,10 @@ class Freelance(models.Model):
     tag = models.CharField(max_length=50, blank=True, null=True)
     preco = models.DecimalField(max_digits=10, decimal_places=2)
     tempo = models.CharField(max_length=50)
+    modalidade = models.CharField(max_length=10, choices=Modalidade.choices, blank=True, default='')
+    cidade = models.CharField(max_length=100, blank=True, default='')
+    uf = models.CharField(max_length=2, choices=UF_CHOICES, blank=True, default='')
+    status = models.CharField(max_length=9, choices=Status.choices, default=Status.PUBLICADA)
     requisitos = models.TextField(max_length=1000, blank=True, default='')
     beneficios = models.TextField(max_length=1000, blank=True, default='')
     tipo_contratacao = models.CharField(max_length=20, choices=TipoContratacao.choices, blank=True, default='')

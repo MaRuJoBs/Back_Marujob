@@ -52,7 +52,10 @@ class FreelanceComplementTests(APITestCase):  # noqa: PLR0904 -- opportunity int
         return {'titulo': 'Vaga compatível', 'descricao': '', 'tag': '', 'preco': '0.00', 'tempo': '1 dia', **extra}
 
     def assert_complete(self, data):
-        self.assertEqual(set(data), self.old_fields | self.text_fields | self.nullable_fields)
+        self.assertEqual(
+            set(data),
+            self.old_fields | self.text_fields | self.nullable_fields | {'modalidade', 'cidade', 'uf', 'status'},
+        )
 
     def test_create_without_complements_preserves_previous_contract(self):
         response = self.client.post(self.url, self.minimal_data(), format='json')

@@ -1,6 +1,8 @@
 import re
+import unicodedata
 
-from rest_framework.serializers import DateField, ModelSerializer, ValidationError
+from drf_spectacular.utils import extend_schema_field
+from rest_framework.serializers import ChoiceField, DateField, ModelSerializer, ValidationError
 
 from core.models import Freelance
 
@@ -12,7 +14,13 @@ class PublicationDateField(DateField):
         return super().to_internal_value(data)
 
 
+@extend_schema_field({'type': 'string', 'enum': Freelance.Status.values}, component_name='OpportunityStatus')
+class OpportunityStatusField(ChoiceField):
+    """Keep opportunity and application status enums distinct in OpenAPI."""
+
+
 class FreelanceSerializer(ModelSerializer):
+    status = OpportunityStatusField(choices=Freelance.Status.choices, required=False)
     data_publicacao = PublicationDateField(
         required=False,
         allow_null=True,
@@ -35,6 +43,15 @@ class FreelanceSerializer(ModelSerializer):
     def validate_preco(self, value):
         if value < 0:
             raise ValidationError('O preço não pode ser negativo.')
+        return value
+
+    def validate_cidade(self, value):
+        value = unicodedata.normalize('NFC', value)
+        if value and (
+            not any(character.isalpha() for character in value)
+            or any(not character.isalpha() and character not in " .'-’" for character in value)
+        ):
+            raise ValidationError('Informe uma cidade com letras, espaços, hífens, pontos ou apóstrofos.')
         return value
 
     def validate(self, attrs):
