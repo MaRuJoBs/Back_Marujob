@@ -26,6 +26,7 @@ from core.views import (
     UserRegistrationView,
     UserViewSet,
 )
+from core.views.empresa_perfil import EmpresaPerfilView
 from core.views.freelancer_publico import FreelancerPublicoViewSet
 
 router = DefaultRouter()
@@ -61,5 +62,6 @@ urlpatterns = [
     # Registro de usuários
     path('api/registro/', UserRegistrationView.as_view(), name='user_registration'),
     # API
+    path('api/empresas/me/', EmpresaPerfilView.as_view(), name='empresa-perfil-me'),
     path('api/', include(router.urls)),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
