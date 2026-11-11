@@ -1,5 +1,36 @@
 # B54 — Validação antes de merge
 
+## Atualização após integração efetiva do FIX-B45 — 2026-11-11
+
+**Situação atual: PRONTO COM RESSALVAS para revisão técnica do PR de auditoria, na base local validada. Sistema não liberado para produção.** O registro anterior abaixo permanece como evidência histórica do bloqueio, que agora foi resolvido.
+
+- PR #23 confirmado integrado: merged_at `2026-11-11T18:48:52Z`, commit da DEV `34a58b5076ef96f7088b02911242155e8764c576`. A integração remota já havia sido concluída quando esta etapa começou; não foi repetida. Seu diff continua restrito a `core/tests/test_freelancer_publico.py`, sem migrations de produção.
+- FEAT-54 inicial `651dfb2bc1d4c3153b6f8f72f2be643d86811151`; merge normal local de origin/DEV concluído sem conflitos em `1c64c9751c1d1c52ac5e8bcca047a776e479f0aa`. O único arquivo alterado pelo merge em relação ao primeiro pai é o teste B45 (três linhas adicionadas, duas removidas).
+- Confirmados como ancestrais preservados: b832120, 69e2bdf, b9cf1d7 e 651dfb2, além de 34a58b5. Os três testes recentes e seus documentos continuam intactos.
+- Antes/depois do merge, comparação SHA256 confirmou preservação byte a byte de core.png, db.sqlite3, imagem local não rastreada, test_security_b54.py, FEAT-54-revisao-final.md e deste documento. Este acréscimo documental ocorreu somente depois da conferência. Nenhum valor de hash ou dado pessoal foi impresso.
+- A worktree manteve as alterações preexistentes e os dois diretórios de inspeção não rastreados. Sem stash, rebase, reset, exclusão ou sobrescrita.
+
+### Resultados sobre a base integrada 1c64c97
+
+Os comandos do runner listados neste documento foram novamente executados: test --noinput, check, makemigrations --check --dry-run, showmigrations --plan e --production check --deploy.
+
+| Verificação | Resultado real após integração |
+|---|---|
+| Suíte completa em um único processo | **270 testes, zero falhas, zero erros, sem skips, exit 0**; `Ran 270 tests in 11.733s`, `OK` |
+| Django check | exit 0, nenhuma questão |
+| Migration dry-run | exit 0, No changes detected |
+| Plano de migrations | exit 0, grafo resolvido até core.0022_empresa_perfil em banco descartável |
+| Deploy check sintético | exit 0, os mesmos 12 avisos: W004/W008 e dez de schema |
+| Ruff check / format --check | exit 0 em nove arquivos Python da B54 e do teste B45 integrado |
+
+Os 270 testes incluem regressões de JWT após troca/definição de senha, refresh, login normal/Google, conta inativa/excluída, tokens legados, uploads e erros Google, origem da URL/logs, permissões entre contas, candidaturas/notificações, portfólios, B45 e B46. Nenhum teste foi removido, alterado ou ignorado para obter aprovação nesta integração.
+
+Persistem B54-03 com origem não verificada, restrição de destino/egress das fotos pendente de decisão, risco de órfãos banco/storage, timeout sem prazo total, PostgreSQL e configuração real de TLS/proxy/CORS/CSRF/Cloudinary sem homologação, avisos de schema e validações operacionais B43. As recomendações de tratamento dos dados e proteção de destinos descritas abaixo continuam válidas. Não se declara conformidade jurídica LGPD nem segurança absoluta.
+
+O PR #22 remoto ainda aponta para 651dfb2 e permanece draft: **o merge local e este resultado ainda não foram enviados**. Próximas operações dependentes de autorização: commit somente desta atualização documental; push normal da FEAT-54 com o merge autorizado e a documentação; atualização do PR/estado de revisão; eventual merge do #22 após aprovação separada. Nenhum push, merge do #22, deploy ou migration em banco real ocorreu nesta etapa. O commit 1c64c97 é exclusivamente o merge local expressamente autorizado, sem commit adicional de implementação.
+
+## Registro anterior à integração (histórico)
+
 Data: 2026-11-11. **Veredito: NÃO PRONTO.** O critério de aceite da suíte integral (exit 0) não foi atendido. Esta validação complementa a [revisão das correções](FEAT-54-revisao-final.md), sem refazer a auditoria.
 
 ## Estado Git e PRs
