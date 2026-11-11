@@ -50,6 +50,9 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
 # Enable only behind a controlled proxy that strips/replaces client-supplied headers.
 TRUST_X_FORWARDED_PROTO = os.getenv('TRUST_X_FORWARDED_PROTO', 'False').strip().lower() == 'true'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_X_FORWARDED_PROTO else None
+# Admin sessions and CSRF cookies must only travel over HTTPS in production.
+SESSION_COOKIE_SECURE = MODE == 'PRODUCTION'
+CSRF_COOKIE_SECURE = MODE == 'PRODUCTION'
 
 # Aplicações instaladas
 INSTALLED_APPS = [
@@ -195,6 +198,8 @@ REST_FRAMEWORK = {
 
 # Configurações do Simple JWT
 SIMPLE_JWT = {
+    'CHECK_REVOKE_TOKEN': True,
+    'TOKEN_REFRESH_SERIALIZER': 'core.serializers.tokens.PasswordBoundTokenRefreshSerializer',
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=180),  # Tokens de acesso expiram em 3 horas
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),  # Tokens de atualização expiram em 1 dia
     'AUTH_HEADER_TYPES': ('Bearer',),

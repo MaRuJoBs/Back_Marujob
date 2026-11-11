@@ -11,7 +11,10 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 # Django APITestCase assertions retain detailed response diagnostics.
 # ruff: noqa: PT009, PT027
 from django.contrib.auth.models import Group
+from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.exceptions import ImproperlyConfigured
+from django.http import HttpResponse
+from django.middleware.csrf import CsrfViewMiddleware, get_token
 from django.test import RequestFactory, SimpleTestCase, override_settings
 from google.auth import crypt, jwt
 from google.auth.exceptions import TransportError
@@ -214,11 +217,14 @@ class AuthenticationTests(APITestCase):
         self.worker.set_unusable_password()
         self.worker.google_id = 'google-sub'
         self.worker.save()
+        self.login_as(self.worker)
         self.assertEqual(self.client.post('/api/auth/definir-senha/', {'senha': '12345678'}).status_code, 400)
         self.assertEqual(self.client.post('/api/auth/definir-senha/', {'senha': self.password}).status_code, 200)
+        self.worker.refresh_from_db()
+        self.login_as(self.worker)
         self.assertEqual(self.client.post('/api/auth/definir-senha/', {'senha': self.password}).status_code, 400)
 
-    @patch('core.views.user.requests.get')
+    @patch('core.google_photo.requests.get')
     @patch('core.views.user.id_token.verify_oauth2_token')
     def test_google(self, verify, download):
         url = '/api/auth/google/'
@@ -396,6 +402,28 @@ class AuthenticationTests(APITestCase):
 
 
 class ProductionSettingsTests(SimpleTestCase):
+    def test_production_session_and_csrf_cookies_require_https(self):
+        config = self.load_settings()
+        with override_settings(
+            SESSION_ENGINE='django.contrib.sessions.backends.signed_cookies',
+            SESSION_COOKIE_SECURE=config.get('SESSION_COOKIE_SECURE', False),
+            CSRF_COOKIE_SECURE=config.get('CSRF_COOKIE_SECURE', False),
+        ):
+            request = RequestFactory().get('/', secure=True)
+            session = SessionMiddleware(lambda request: HttpResponse())
+            session.process_request(request)
+            request.session['synthetic'] = 'value'
+            get_token(request)
+            response = session.process_response(request, HttpResponse())
+            response = CsrfViewMiddleware(lambda request: HttpResponse()).process_response(request, response)
+            self.assertTrue(response.cookies['sessionid']['secure'])
+            self.assertTrue(response.cookies['csrftoken']['secure'])
+
+    def test_development_cookies_remain_available_over_local_http(self):
+        config = self.load_settings(MODE='DEVELOPMENT')
+        self.assertFalse(config.get('SESSION_COOKIE_SECURE', False))
+        self.assertFalse(config.get('CSRF_COOKIE_SECURE', False))
+
     def load_settings(self, **overrides):
         environment = {
             'MODE': 'PRODUCTION',
