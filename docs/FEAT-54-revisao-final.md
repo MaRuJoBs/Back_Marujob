@@ -1,5 +1,7 @@
 # B54 — Revisão final e correções autorizadas
 
+**Atualização:** esta revisão foi publicada no commit `b9cf1d7`. A validação posterior antes de merge, com novos resultados e análise do destino de fotos, está em [FEAT-54-validacao-pre-merge.md](FEAT-54-validacao-pre-merge.md). As referências abaixo a alterações ainda locais descrevem o momento anterior à publicação desse commit.
+
 Data: 2026-11-11. Base efetiva: FEAT-54 em `69e2bdf21dd49fe038a43f8b05d7e3c07b0a8eec` mais alterações locais desta revisão, ainda sem commit/push. Este documento atualiza o [relatório inicial](FEAT-54-auditoria-seguranca.md); não reinicia a auditoria.
 
 **Veredito: AUDITORIA INCOMPLETA — VALIDAÇÕES PENDENTES.** B54-01 e B54-02 estão corrigidos e validados localmente no escopo descrito abaixo. B54-03 continua não verificada, a suíte integral permanece vermelha pela dependência B45 e não houve homologação operacional.

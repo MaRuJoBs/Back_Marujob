@@ -329,3 +329,46 @@ class GooglePhotoAuditTests(MediaAPITestCase):
         self.assertFalse(user.profile_image)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {response.data["access"]}')
         self.assertEqual(self.client.get('/api/usuarios/me/').status_code, 200)
+
+    def test_photo_url_comes_from_verified_claim_not_request_payload(self):
+        with (
+            patch('core.views.user.id_token.verify_oauth2_token', return_value=self.claims),
+            patch('core.google_photo.requests.get', return_value=self.download(status=404)) as get,
+        ):
+            response = self.client.post(
+                '/api/auth/google/',
+                {
+                    'credential': 'synthetic',
+                    'cadastro': True,
+                    'tipo': 'usuario',
+                    'picture': 'https://127.0.0.1/synthetic-untrusted-payload',
+                },
+                format='json',
+            )
+        self.assertEqual(response.status_code, 200)
+        get.assert_called_once_with(self.claims['picture'], timeout=10, stream=True, allow_redirects=False)
+
+    def test_characterization_verified_picture_has_no_destination_allowlist(self):
+        # Conditional trust-boundary evidence, NOT proof of attacker-controlled SSRF.
+        # Verification is mocked; no claim that Google issues these URLs is made.
+        self.claims['picture'] = 'https://127.0.0.1/synthetic-loopback'
+        with (
+            patch('core.views.user.id_token.verify_oauth2_token', return_value=self.claims),
+            patch('core.google_photo.requests.get', return_value=self.download(status=404)) as get,
+        ):
+            self.assertEqual(self.register().status_code, 200)
+        get.assert_called_once_with(self.claims['picture'], timeout=10, stream=True, allow_redirects=False)
+
+    def test_photo_failure_logs_only_generic_category(self):
+        private_marker = 'synthetic-private-marker-for-log-test'
+        with (
+            patch('core.views.user.id_token.verify_oauth2_token', return_value=self.claims),
+            patch('core.google_photo.requests.get', side_effect=Timeout(private_marker)),
+            self.assertLogs('core.google_photo', level='WARNING') as logs,
+        ):
+            response = self.register()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([record.getMessage() for record in logs.records], ['Optional Google photo unavailable'])
+        self.assertNotIn(private_marker, str(logs.output))
+        self.assertNotIn(self.claims['picture'], str(logs.output))
+        self.assertNotIn(self.claims['email'], str(logs.output))
