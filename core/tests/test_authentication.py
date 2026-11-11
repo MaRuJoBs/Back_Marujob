@@ -217,11 +217,14 @@ class AuthenticationTests(APITestCase):
         self.worker.set_unusable_password()
         self.worker.google_id = 'google-sub'
         self.worker.save()
+        self.login_as(self.worker)
         self.assertEqual(self.client.post('/api/auth/definir-senha/', {'senha': '12345678'}).status_code, 400)
         self.assertEqual(self.client.post('/api/auth/definir-senha/', {'senha': self.password}).status_code, 200)
+        self.worker.refresh_from_db()
+        self.login_as(self.worker)
         self.assertEqual(self.client.post('/api/auth/definir-senha/', {'senha': self.password}).status_code, 400)
 
-    @patch('core.views.user.requests.get')
+    @patch('core.google_photo.requests.get')
     @patch('core.views.user.id_token.verify_oauth2_token')
     def test_google(self, verify, download):
         url = '/api/auth/google/'

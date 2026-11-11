@@ -198,6 +198,8 @@ REST_FRAMEWORK = {
 
 # Configurações do Simple JWT
 SIMPLE_JWT = {
+    'CHECK_REVOKE_TOKEN': True,
+    'TOKEN_REFRESH_SERIALIZER': 'core.serializers.tokens.PasswordBoundTokenRefreshSerializer',
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=180),  # Tokens de acesso expiram em 3 horas
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),  # Tokens de atualização expiram em 1 dia
     'AUTH_HEADER_TYPES': ('Bearer',),

@@ -2,6 +2,8 @@
 
 Data: 2026-11-11. Veredito: **INCOMPLETA — VALIDAÇÕES PENDENTES**.
 
+**Registro histórico da primeira auditoria, preservado para comparação.** A revisão posterior e as correções locais autorizadas de B54-01/B54-02 estão em [FEAT-54-revisao-final.md](FEAT-54-revisao-final.md), que prevalece para a situação atual. Os testes de caracterização abaixo foram convertidos em regressões que exigem comportamento seguro. A declaração de ausência de alterações de runtime neste documento descreve somente a primeira entrega (`69e2bdf`).
+
 A análise de código e os testes locais foram realizados. Há achados médios comprovados, pendência de classificação dos artefatos versionados, dois erros preexistentes na suíte integral e validações operacionais não executadas. Isto não libera B43 nem atesta segurança absoluta ou conformidade jurídica com LGPD.
 
 ## A. Estado inicial, histórico e escopo

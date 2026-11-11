@@ -1,11 +1,9 @@
 import logging
 
-import requests
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from drf_spectacular.utils import extend_schema
 from google.auth.exceptions import GoogleAuthError, TransportError
@@ -21,13 +19,13 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ReadOnlyModelViewSet
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from core.google_photo import attach_google_photo
 from core.models import User
 from core.serializers import (
     UserProfileSerializer,
     UserRegistrationSerializer,
     UserSerializer,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -208,20 +206,7 @@ class GoogleLoginView(CreateAPIView):
 
             # Salva a foto de perfil do Google
             if profile_image:
-                try:
-                    imagem = requests.get(
-                        profile_image,
-                        timeout=10,
-                    )
-
-                    if imagem.status_code == status.HTTP_200_OK:
-                        user.profile_image.save(
-                            'google_profile.jpg',
-                            ContentFile(imagem.content),
-                            save=False,
-                        )
-                except requests.RequestException:
-                    pass
+                attach_google_photo(user, profile_image)
 
             user.save()
 
@@ -251,20 +236,7 @@ class GoogleLoginView(CreateAPIView):
 
             # Salva a foto do Google caso o usuário ainda não tenha foto
             if profile_image and not user.profile_image:
-                try:
-                    imagem = requests.get(
-                        profile_image,
-                        timeout=10,
-                    )
-
-                    if imagem.status_code == status.HTTP_200_OK:
-                        user.profile_image.save(
-                            'google_profile.jpg',
-                            ContentFile(imagem.content),
-                            save=False,
-                        )
-                except requests.RequestException:
-                    pass
+                attach_google_photo(user, profile_image)
 
             user.save()
 
