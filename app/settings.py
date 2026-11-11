@@ -50,6 +50,9 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
 # Enable only behind a controlled proxy that strips/replaces client-supplied headers.
 TRUST_X_FORWARDED_PROTO = os.getenv('TRUST_X_FORWARDED_PROTO', 'False').strip().lower() == 'true'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_X_FORWARDED_PROTO else None
+# Admin sessions and CSRF cookies must only travel over HTTPS in production.
+SESSION_COOKIE_SECURE = MODE == 'PRODUCTION'
+CSRF_COOKIE_SECURE = MODE == 'PRODUCTION'
 
 # Aplicações instaladas
 INSTALLED_APPS = [
