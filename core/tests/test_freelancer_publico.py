@@ -513,8 +513,9 @@ class FreelancerPublicoMigrationTests(TransactionTestCase):
         old_target = [('core', '0020_freelance_complementos')]
         new_target = [('core', '0021_publicacao_perfil_portfolio')]
         executor = MigrationExecutor(connection)
-        executor.migrate(old_target)
+        latest_targets = executor.loader.graph.leaf_nodes()
         try:
+            executor.migrate(old_target)
             apps = executor.loader.project_state(old_target).apps
             old_user = apps.get_model('core', 'User').objects.create(
                 email='migration-b45@example.com',
@@ -536,4 +537,4 @@ class FreelancerPublicoMigrationTests(TransactionTestCase):
             self.assertEqual(migrated_user.localizacao, 'Endereço privado')
             self.assertFalse(Portfolio.objects.get(pk=old_project.pk).publico)
         finally:
-            MigrationExecutor(connection).migrate(new_target)
+            MigrationExecutor(connection).migrate(latest_targets)
