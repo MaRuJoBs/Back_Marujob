@@ -12,18 +12,23 @@ def display_name(user):
 
 
 class ChatUserSerializer(serializers.ModelSerializer):
-    """Identificação pública mínima de um usuário no chat (nunca expõe e-mail nem permissões)."""
+    """Identificação pública mínima de um usuário no chat (nunca expõe e-mail, telefone nem permissões)."""
 
     name = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
+    # Profissão do perfil, exibida no cabeçalho da conversa ("@Web-Developer"); '' quando não informada.
+    profissao = serializers.SerializerMethodField()
 
     class Meta:
         model = get_user_model()
-        fields = ['id', 'name', 'avatar']
+        fields = ['id', 'name', 'avatar', 'profissao']
         read_only_fields = fields
 
     def get_name(self, user) -> str:
         return display_name(user)
+
+    def get_profissao(self, user) -> str:
+        return (getattr(user, 'profissao', '') or '').strip()
 
     def get_avatar(self, user) -> str | None:
         # Foto de perfil enviada pelo usuário (core.User.profile_image), se houver.

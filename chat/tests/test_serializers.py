@@ -30,7 +30,17 @@ class ChatUserTests(TestCase):
     def test_no_avatar(self):
         self.assertIsNone(ChatUserSerializer(make_user('a@example.com', 'Ana')).data['avatar'])
 
-    def test_payload_has_no_email(self):
-        data = ChatUserSerializer(make_user('a@example.com', 'Ana')).data
+    def test_profissao_is_trimmed_and_empty_when_missing(self):
+        self.assertEqual(
+            ChatUserSerializer(make_user('a@example.com', 'Ana', profissao=' Web Developer ')).data['profissao'],
+            'Web Developer',
+        )
+        self.assertEqual(ChatUserSerializer(make_user('b@example.com', 'Bia')).data['profissao'], '')
 
-        self.assertEqual(set(data), {'id', 'name', 'avatar'})
+    def test_payload_has_no_email_nor_phone(self):
+        user = make_user('a@example.com', 'Ana', telefone='+5547999990000', profissao='Designer')
+        data = ChatUserSerializer(user).data
+
+        self.assertEqual(set(data), {'id', 'name', 'avatar', 'profissao'})
+        self.assertNotIn('a@example.com', str(data))
+        self.assertNotIn('99999', str(data))

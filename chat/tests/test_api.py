@@ -68,11 +68,16 @@ class ContactTests(APITestCase):
         )
 
     def test_company_opens_a_room_with_the_freelancer(self):
+        self.ana.profissao = 'Web Developer'
+        self.ana.save()
+
         response = open_room(self.bia, self.candidatura)
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['name'], 'Ana')
         self.assertEqual(response.data['other']['id'], self.ana.pk)
+        self.assertEqual(response.data['other']['profissao'], 'Web Developer')
+        self.assertNotIn('telefone', response.data['other'])
         self.assertEqual(response.data['pending_vaga']['titulo'], 'Desenvolvedora Vue')
 
     def test_same_pair_reuses_the_room(self):
