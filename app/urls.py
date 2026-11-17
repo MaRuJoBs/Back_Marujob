@@ -63,5 +63,7 @@ urlpatterns = [
     path('api/registro/', UserRegistrationView.as_view(), name='user_registration'),
     # API
     path('api/empresas/me/', EmpresaPerfilView.as_view(), name='empresa-perfil-me'),
+    # Chat: precisa vir antes de 'api/' para não ser engolido pelas rotas do router.
+    path('api/chat/', include('chat.urls')),
     path('api/', include(router.urls)),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
