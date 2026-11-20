@@ -26,6 +26,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.core.exceptions import PermissionDenied, ValidationError
 
 from . import actions, realtime, services
+from .middleware import JWTAuthMiddleware
 from .models import Message, Room
 from .serializers import RoomSerializer
 
@@ -132,6 +133,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
     user = None
     user_group = None
     counted = False
+    auth_revoked = False
+
+    async def dispatch(self, message):
+        # A WebSocket outlives its handshake. Revalidate before both client actions
+        # and private broadcasts, including expiry, password changes and activity.
+        if message['type'] != 'websocket.disconnect':
+            if self.auth_revoked:
+                return
+            if self.user_group:
+                current_user = await JWTAuthMiddleware(None).get_user(self.scope)
+                if not current_user.is_authenticated:
+                    self.auth_revoked = True
+                    await self.close(code=CLOSE_UNAUTHORIZED)
+                    await self._cleanup()
+                    return
+                self.user = self.scope['user'] = current_user
+        await super().dispatch(message)
 
     async def __call__(self, scope, receive, send):
         try:
@@ -201,6 +219,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         action = data.get('action')
+        if not isinstance(action, str):
+            await self.send_error('Ação desconhecida.')
+            return
         handler = {
             'send': self._send_action,
             'edit': self._edit_action,
@@ -210,7 +231,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }.get(action)
 
         if handler is None:
-            logger.warning('WS: ação desconhecida %r de %s', action, self.user.pk)
+            logger.warning('WS: ação desconhecida.')
             await self.send_error('Ação desconhecida.')
 
             return
@@ -224,7 +245,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_error(_error_text(error), action=action)
         except Exception:
             # Erro inesperado não derruba a conexão: registra e avisa o usuário.
-            logger.exception('WS: erro ao processar %r de %s', action, self.user.pk)
+            logger.error('WS: falha ao processar ação.')
             await self.send_error(UNEXPECTED, action=action)
 
     async def send_error(self, detail, action=None):
@@ -246,7 +267,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def _send_action(self, room_id, data):
         reply_to = data.get('reply_to')
-        reply_to = _to_int(reply_to, 'Mensagem respondida inválida.') if reply_to not in {None, ''} else None
+        if reply_to not in (None, ''):  # noqa: PLR6201 -- JSON values may be unhashable
+            reply_to = _to_int(reply_to, 'Mensagem respondida inválida.')
+        else:
+            reply_to = None
 
         await database_sync_to_async(_do_send)(self.user, room_id, _body(data.get('body')), reply_to)
 

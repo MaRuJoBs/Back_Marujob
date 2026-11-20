@@ -8,12 +8,8 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-    TokenVerifyView,
-)
 
+from core.media import public_media
 from core.views import (
     CandidaturaViewSet,
     DefinirSenhaView,
@@ -29,6 +25,7 @@ from core.views import (
 from core.views.avaliacao import AvaliacaoViewSet, ConclusaoTrabalhoView
 from core.views.empresa_perfil import EmpresaPerfilView
 from core.views.freelancer_publico import FreelancerPublicoViewSet
+from core.views.tokens import TokenObtainPairView, TokenRefreshView, TokenVerifyView
 
 router = DefaultRouter()
 
@@ -73,4 +70,4 @@ urlpatterns = [
     # Chat: precisa vir antes de 'api/' para não ser engolido pelas rotas do router.
     path('api/chat/', include('chat.urls')),
     path('api/', include(router.urls)),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+] + static(settings.MEDIA_URL, view=public_media, document_root=settings.MEDIA_ROOT)

@@ -26,6 +26,7 @@ from core.serializers import (
     UserRegistrationSerializer,
     UserSerializer,
 )
+from core.throttles import PasswordEndpointThrottle, SensitiveEndpointThrottle
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ class UserRegistrationView(CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
+    throttle_classes = [SensitiveEndpointThrottle]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def perform_create(self, serializer):
@@ -94,6 +96,7 @@ class GoogleLoginView(CreateAPIView):
     """Login e cadastro utilizando uma conta Google."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [SensitiveEndpointThrottle]
     # Identity comes from the verified Google credential, not an old API JWT.
     authentication_classes = []
 
@@ -258,6 +261,7 @@ class GoogleLoginView(CreateAPIView):
 
 class DefinirSenhaView(CreateAPIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [PasswordEndpointThrottle]
 
     def post(self, request):
         if request.user.has_usable_password() or not request.user.google_id:
@@ -291,6 +295,7 @@ class DefinirSenhaView(CreateAPIView):
 
 class TrocarSenhaView(CreateAPIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [PasswordEndpointThrottle]
 
     def post(self, request):
         senha_atual = request.data.get('senha_atual')
