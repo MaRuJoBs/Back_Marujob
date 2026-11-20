@@ -16,6 +16,7 @@ class EmpresaPerfil(models.Model):
     area_atuacao = models.CharField(max_length=120, blank=True, default='')
     cidade = models.CharField(max_length=100, blank=True, default='')
     uf = models.CharField(max_length=2, choices=Freelance.UF_CHOICES, blank=True, default='')
+    bairro = models.CharField(max_length=100, blank=True, default='')
     website = models.URLField(
         max_length=200,
         blank=True,
@@ -23,6 +24,11 @@ class EmpresaPerfil(models.Model):
         validators=[URLValidator(schemes=['http', 'https'])],
     )
     contato_comercial = models.CharField(max_length=255, blank=True, default='')
+
+    @property
+    def pais(self):
+        # All supported UFs belong to Brazil; do not store a duplicate country.
+        return 'BR' if self.cidade and self.uf in dict(Freelance.UF_CHOICES) else ''
 
     def __str__(self):
         return f'Perfil institucional {self.empresa_id}'
