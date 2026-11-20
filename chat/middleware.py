@@ -40,16 +40,18 @@ class JWTAuthMiddleware(BaseMiddleware):
             validated = authentication.get_validated_token(token)
 
             return authentication.get_user(validated)
-        except (InvalidToken, TokenError, AuthenticationFailed) as error:
-            # Nunca loga o token, só o motivo.
-            logger.warning('WS recusado: token inválido, expirado, revogado ou de usuário inativo (%s).', error)
+        except (InvalidToken, TokenError, AuthenticationFailed):
+            logger.warning('WS recusado: credencial inválida, expirada ou revogada.')
 
             return AnonymousUser()
 
     @staticmethod
     def _get_token(scope):
-        query_string = scope.get('query_string', b'').decode()
-        token = parse_qs(query_string).get('token')
+        try:
+            query_string = scope.get('query_string', b'').decode()
+            token = parse_qs(query_string, max_num_fields=16).get('token')
+        except (UnicodeDecodeError, ValueError):
+            return None
 
         return token[0] if token else None
 

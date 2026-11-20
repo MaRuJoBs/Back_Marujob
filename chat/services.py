@@ -185,7 +185,7 @@ def _remove_file(message):
     try:
         message.file.delete(save=False)
     except Exception:  # noqa: BLE001 - falha de storage não pode impedir a exclusão lógica
-        logger.exception('Falha ao remover o arquivo da mensagem %s', message.pk)
+        logger.warning('Falha ao remover arquivo do chat.')
 
 
 def rooms_for(user, only=None):

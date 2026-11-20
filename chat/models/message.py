@@ -26,13 +26,13 @@ def chat_file_storage():
     """Storage dos anexos do chat.
 
     Em produção o storage padrão é o MediaCloudinaryStorage, que só aceita imagens; os anexos do chat
-    podem ser qualquer arquivo, então vão para o RawMediaCloudinaryStorage. Em desenvolvimento, o
+    podem ser qualquer arquivo, então usam storage raw com entrega autenticada. Em desenvolvimento, o
     storage padrão (disco). Por ser uma função, a migration não depende do ambiente.
     """
     if settings.MODE in {'MIGRATE', 'PRODUCTION'}:
-        from cloudinary_storage.storage import RawMediaCloudinaryStorage  # noqa: PLC0415
+        from chat.storage import AuthenticatedChatStorage  # noqa: PLC0415
 
-        return RawMediaCloudinaryStorage()
+        return AuthenticatedChatStorage()
 
     return default_storage
 

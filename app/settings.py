@@ -1,6 +1,8 @@
 import os
+import re
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
@@ -26,7 +28,12 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 MIN_SECRET_KEY_LENGTH = 50
-UNSAFE_SECRET_KEY = SECRET_KEY.startswith('django-insecure') or len(SECRET_KEY) < MIN_SECRET_KEY_LENGTH
+MIN_SECRET_KEY_CHARACTERS = 5
+UNSAFE_SECRET_KEY = (
+    SECRET_KEY.startswith('django-insecure')
+    or len(SECRET_KEY) < MIN_SECRET_KEY_LENGTH
+    or len(set(SECRET_KEY)) < MIN_SECRET_KEY_CHARACTERS
+)
 if MODE != 'DEVELOPMENT' and any((DEBUG, UNSAFE_SECRET_KEY, not ALLOWED_HOSTS, '*' in ALLOWED_HOSTS)):
     raise ImproperlyConfigured('Configure SECRET_KEY forte, ALLOWED_HOSTS explícitos e DEBUG=False.')
 DEVELOPMENT_FRONTEND_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173'
@@ -46,6 +53,26 @@ CSRF_TRUSTED_ORIGINS = [
     ).split(',')
     if origin.strip()
 ]
+if MODE == 'PRODUCTION':
+    for origins in (CORS_ALLOWED_ORIGINS, CSRF_TRUSTED_ORIGINS):
+        for origin in origins:
+            try:
+                parsed = urlsplit(origin)
+                valid = (
+                    parsed.scheme == 'https'
+                    and parsed.hostname
+                    and not parsed.username
+                    and not parsed.password
+                    and not parsed.path
+                    and not parsed.query
+                    and not parsed.fragment
+                    and '*' not in parsed.netloc
+                    and parsed.port != 0
+                )
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ImproperlyConfigured('Origens de CORS e CSRF em produção devem ser origens HTTPS explícitas.')
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
 # Enable only behind a controlled proxy that strips/replaces client-supplied headers.
 TRUST_X_FORWARDED_PROTO = os.getenv('TRUST_X_FORWARDED_PROTO', 'False').strip().lower() == 'true'
@@ -53,6 +80,9 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_X_FORWARD
 # Admin sessions and CSRF cookies must only travel over HTTPS in production.
 SESSION_COOKIE_SECURE = MODE == 'PRODUCTION'
 CSRF_COOKIE_SECURE = MODE == 'PRODUCTION'
+SECURE_SSL_REDIRECT = MODE == 'PRODUCTION'
+# Start with a short HSTS lifetime; do not enroll other subdomains or preload.
+SECURE_HSTS_SECONDS = 3600 if MODE == 'PRODUCTION' else 0
 
 # Aplicações instaladas
 INSTALLED_APPS = [
@@ -122,6 +152,15 @@ if REDIS_URL:
 else:
     CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
 
+if MODE == 'PRODUCTION' and REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'KEY_PREFIX': 'marujob-auth',
+        },
+    }
+
 # Tamanho máximo de um anexo do chat, em MB.
 try:
     CHAT_MAX_UPLOAD_MB = int(os.getenv('CHAT_MAX_UPLOAD_MB', '10'))
@@ -131,6 +170,8 @@ if CHAT_MAX_UPLOAD_MB <= 0:
     raise ImproperlyConfigured('CHAT_MAX_UPLOAD_MB deve ser um inteiro positivo.')
 
 # Banco de dados
+if MODE != 'DEVELOPMENT' and not os.getenv('DATABASE_URL', '').strip():
+    raise ImproperlyConfigured('Configure DATABASE_URL explicitamente fora de desenvolvimento.')
 DATABASES = {
     'default': dj_database_url.config(
         default='sqlite:///db.sqlite3',
@@ -221,6 +262,14 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'PAGE_SIZE': 10,
 }
+
+# Applied only in PRODUCTION. The reverse proxy must replace REMOTE_ADDR with
+# the real peer address; arbitrary X-Forwarded-For headers are never trusted here.
+AUTH_THROTTLE_RATE = os.getenv('AUTH_THROTTLE_RATE', '20/min')
+PASSWORD_THROTTLE_RATE = os.getenv('PASSWORD_THROTTLE_RATE', '5/min')
+for rate in (AUTH_THROTTLE_RATE, PASSWORD_THROTTLE_RATE):
+    if not re.fullmatch(r'[1-9][0-9]*/(?:second|minute|hour|day|sec|min|s|m|h|d)s?', rate):
+        raise ImproperlyConfigured('Configure limites de autenticação positivos, por exemplo 20/min.')
 
 # Configurações do Simple JWT
 SIMPLE_JWT = {
