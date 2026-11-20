@@ -26,6 +26,7 @@ from core.views import (
     UserRegistrationView,
     UserViewSet,
 )
+from core.views.avaliacao import AvaliacaoViewSet, ConclusaoTrabalhoView
 from core.views.empresa_perfil import EmpresaPerfilView
 from core.views.freelancer_publico import FreelancerPublicoViewSet
 
@@ -38,6 +39,7 @@ router.register(r'portfolios', PortfolioViewSet, basename='portfolios')
 router.register(r'favoritos', FavoritoViewSet, basename='favoritos')
 router.register(r'candidaturas', CandidaturaViewSet, basename='candidaturas')
 router.register(r'notificacoes', NotificacaoViewSet, basename='notificacoes')
+router.register(r'avaliacoes', AvaliacaoViewSet, basename='avaliacoes')
 urlpatterns = [
     path('admin/', admin.site.urls),
     # OpenAPI 3
@@ -63,7 +65,15 @@ urlpatterns = [
     path('api/registro/', UserRegistrationView.as_view(), name='user_registration'),
     # API
     path('api/empresas/me/', EmpresaPerfilView.as_view(), name='empresa-perfil-me'),
+<<<<<<< HEAD
     # Chat: precisa vir antes de 'api/' para não ser engolido pelas rotas do router.
     path('api/chat/', include('chat.urls')),
+=======
+    path(
+        'api/candidaturas/<int:candidatura_id>/conclusao/',
+        ConclusaoTrabalhoView.as_view(),
+        name='candidatura-conclusao',
+    ),
+>>>>>>> origin/DEV
     path('api/', include(router.urls)),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
