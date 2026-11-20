@@ -1,0 +1,78 @@
+from rest_framework import serializers
+
+from chat import services
+
+from .message import MessageSerializer
+from .user import FALLBACK_NAME, ChatUserSerializer
+
+
+class ContactSerializer(serializers.Serializer):
+    """Entrada de POST /chat/rooms/contact/: a candidatura sobre a qual a pessoa quer conversar."""
+
+    candidatura = serializers.IntegerField(min_value=1)
+
+
+class RoomSerializer(serializers.Serializer):
+    """Resumo da conversa para quem a consulta. Espera uma conversa anotada por services.rooms_for.
+
+    `name` e `image` são os do outro participante (como no WhatsApp); `other` traz também a presença.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
+    other = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField(read_only=True)
+    last_message_at = serializers.DateTimeField(read_only=True)
+    unread = serializers.IntegerField(read_only=True)
+    last_message = serializers.SerializerMethodField()
+    pending_vaga = serializers.SerializerMethodField()
+    # Vaga de que trata a conversa (chip na lista): o último cartão enviado; sem nenhum, o pendente.
+    vaga = serializers.SerializerMethodField()
+
+    def get_name(self, room) -> str:
+        other = getattr(room, 'other', None)
+
+        return ChatUserSerializer(other).data['name'] if other else FALLBACK_NAME
+
+    def get_image(self, room) -> str | None:
+        other = getattr(room, 'other', None)
+
+        return ChatUserSerializer(other).data['avatar'] if other else None
+
+    def get_other(self, room) -> dict | None:
+        other = getattr(room, 'other', None)
+
+        if other is None:
+            return None
+
+        presence = getattr(other, 'chat_presence', None)
+        last_seen = (
+            serializers.DateTimeField().to_representation(presence.last_seen)
+            if presence and presence.last_seen
+            else None
+        )
+
+        return {
+            **ChatUserSerializer(other).data,
+            'online': bool(presence and presence.is_online),
+            'last_seen': last_seen,
+        }
+
+    def get_last_message(self, room) -> dict | None:
+        message = getattr(room, 'last_message', None)
+
+        if message is None:
+            return None
+
+        return MessageSerializer(message, context=self.context).data
+
+    def get_pending_vaga(self, room) -> dict | None:
+        vaga = getattr(room, 'pending_vaga_obj', None)
+
+        return services.vaga_card(vaga) if vaga is not None else None
+
+    def get_vaga(self, room) -> dict | None:
+        card = getattr(room, 'last_vaga_card', None)
+
+        return card if card else self.get_pending_vaga(room)

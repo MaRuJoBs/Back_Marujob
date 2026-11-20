@@ -70,5 +70,7 @@ urlpatterns = [
         ConclusaoTrabalhoView.as_view(),
         name='candidatura-conclusao',
     ),
+    # Chat: precisa vir antes de 'api/' para não ser engolido pelas rotas do router.
+    path('api/chat/', include('chat.urls')),
     path('api/', include(router.urls)),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

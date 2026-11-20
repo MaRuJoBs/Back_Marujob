@@ -56,6 +56,8 @@ CSRF_COOKIE_SECURE = MODE == 'PRODUCTION'
 
 # Aplicações instaladas
 INSTALLED_APPS = [
+    # daphne precisa vir primeiro: substitui o runserver por um servidor ASGI (HTTP + WebSocket).
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -69,7 +71,9 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_spectacular',
     'rest_framework',
+    'channels',
     'core',
+    'chat',
 ]
 
 MIDDLEWARE = [
@@ -103,6 +107,28 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'app.wsgi.application'
+ASGI_APPLICATION = 'app.asgi.application'
+
+# Chat em tempo real (Django Channels). Com REDIS_URL o channel layer é compartilhado entre processos;
+# sem ele, fica em memória (serve só para desenvolvimento e testes, com um único processo).
+REDIS_URL = os.getenv('REDIS_URL', '').strip()
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {'hosts': [REDIS_URL]},
+        },
+    }
+else:
+    CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
+
+# Tamanho máximo de um anexo do chat, em MB.
+try:
+    CHAT_MAX_UPLOAD_MB = int(os.getenv('CHAT_MAX_UPLOAD_MB', '10'))
+except ValueError:
+    raise ImproperlyConfigured('CHAT_MAX_UPLOAD_MB deve ser um inteiro positivo.') from None
+if CHAT_MAX_UPLOAD_MB <= 0:
+    raise ImproperlyConfigured('CHAT_MAX_UPLOAD_MB deve ser um inteiro positivo.')
 
 # Banco de dados
 DATABASES = {
