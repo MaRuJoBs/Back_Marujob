@@ -57,11 +57,15 @@ class EmpresaPerfilTests(MediaAPITestCase):
                 'empresa': self.company.pk,
                 'name': 'Empresa antiga',
                 'profile_image': None,
+                'pais': '',
+                'bairro': '',
                 **{field: '' for field in self.institutional},
             },
         )
         self.assertEqual(EmpresaPerfil.objects.count(), 0)
-        self.assertEqual(set(response.data), {'empresa', 'name', 'profile_image'} | self.institutional.keys())
+        self.assertEqual(
+            set(response.data), {'empresa', 'name', 'profile_image', 'pais', 'bairro'} | self.institutional.keys()
+        )
 
     def test_patch_creates_persists_and_reuses_name(self):
         response = self.client.patch(self.url, {**self.institutional, 'name': 'MaRuJoB Empresa'}, format='json')
@@ -203,7 +207,9 @@ class EmpresaPerfilTests(MediaAPITestCase):
         )
         self.assertEqual(set(schema['paths']['/api/empresas/me/']), {'get', 'patch'})
         fields = schema['components']['schemas']['EmpresaPerfil']['properties']
-        self.assertEqual(set(fields), {'empresa', 'name', 'profile_image'} | self.institutional.keys())
+        self.assertEqual(
+            set(fields), {'empresa', 'name', 'profile_image', 'pais', 'bairro'} | self.institutional.keys()
+        )
         self.assertTrue(fields['empresa']['readOnly'])
         self.assertEqual(fields['website']['format'], 'uri')
 

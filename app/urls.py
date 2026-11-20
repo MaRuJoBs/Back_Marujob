@@ -23,7 +23,7 @@ from core.views import (
     UserViewSet,
 )
 from core.views.avaliacao import AvaliacaoViewSet, ConclusaoTrabalhoView
-from core.views.empresa_perfil import EmpresaPerfilView
+from core.views.empresa_perfil import EmpresaLocalizacaoPublicaView, EmpresaPerfilView
 from core.views.freelancer_publico import FreelancerPublicoViewSet
 from core.views.tokens import TokenObtainPairView, TokenRefreshView, TokenVerifyView
 
@@ -62,6 +62,11 @@ urlpatterns = [
     path('api/registro/', UserRegistrationView.as_view(), name='user_registration'),
     # API
     path('api/empresas/me/', EmpresaPerfilView.as_view(), name='empresa-perfil-me'),
+    path(
+        'api/empresas/<int:empresa_id>/localizacao/',
+        EmpresaLocalizacaoPublicaView.as_view(),
+        name='empresa-localizacao-publica',
+    ),
     path(
         'api/candidaturas/<int:candidatura_id>/conclusao/',
         ConclusaoTrabalhoView.as_view(),
