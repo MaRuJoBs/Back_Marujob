@@ -190,8 +190,8 @@ def _remove_file(message):
 
 def rooms_for(user, only=None):
     """Conversas do usuário, da mais recente para a mais antiga, anotadas com
-    .unread, .last_message, .other (o outro participante) e .pending_vaga_obj
-    (número de queries constante).
+    .unread, .last_message, .other (o outro participante), .pending_vaga_obj e .last_vaga_card
+    (o cartão de vaga da mensagem mais recente que tem um; número de queries constante).
 
     Uma conversa só aparece na lista de quem tem mensagens nela ou um cartão de vaga pendente: assim
     a outra parte só vê a conversa quando recebe a primeira mensagem. `only` restringe a uma
@@ -209,6 +209,12 @@ def rooms_for(user, only=None):
         .values('total')
     )
     last_id = Message.objects.filter(room=OuterRef('pk')).order_by('-created', '-id').values('id')[:1]
+    last_vaga_id = (
+        Message.objects
+        .filter(room=OuterRef('pk'), is_deleted=False, vaga_card__isnull=False)
+        .order_by('-created', '-id')
+        .values('id')[:1]
+    )
 
     if only is not None:
         base = Room.objects.filter(pk=only.pk, memberships__user=user)
@@ -226,6 +232,7 @@ def rooms_for(user, only=None):
             ),
             unread=Coalesce(Subquery(unread, output_field=IntegerField()), 0),
             last_message_id=Subquery(last_id),
+            last_vaga_message_id=Subquery(last_vaga_id),
         ).order_by(F('last_message_at').desc(nulls_last=True), '-id')
     )
 
@@ -245,11 +252,14 @@ def rooms_for(user, only=None):
     }
     last_ids = [room.last_message_id for room in rooms if room.last_message_id]
     messages = Message.objects.select_related('author', 'reply_to__author').in_bulk(last_ids)
+    vaga_ids = [room.last_vaga_message_id for room in rooms if room.last_vaga_message_id]
+    vaga_cards = dict(Message.objects.filter(pk__in=vaga_ids).values_list('pk', 'vaga_card'))
 
     for room in rooms:
         room.other = others.get(room.pk)
         room.pending_vaga_obj = pending.get(room.pk)
         room.last_message = messages.get(room.last_message_id)
+        room.last_vaga_card = vaga_cards.get(room.last_vaga_message_id)
 
     return rooms
 

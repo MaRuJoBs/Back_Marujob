@@ -201,6 +201,57 @@ class RoomListTests(APITestCase):
         self.assertEqual(rooms[0]['last_message']['body'], 'Oi, Bia!')
         self.assertEqual(rooms[0]['last_message']['vaga']['titulo'], 'Backend Django')
 
+    def test_vaga_is_the_pending_card_before_any_message(self):
+        rooms = self.results(self.ana)
+
+        assert rooms[0]['vaga']['titulo'] == 'Backend Django'
+        assert rooms[0]['vaga'] == rooms[0]['pending_vaga']
+
+    def test_vaga_is_the_last_card_sent_for_both_sides(self):
+        client = client_for(self.ana)
+        client.post(messages_url(self.room_id), {'body': 'Oi!'}, format='json')
+        client.post(messages_url(self.room_id), {'body': 'sem cartão'}, format='json')
+
+        for user in (self.ana, self.bia):
+            rooms = self.results(user)
+
+            assert rooms[0]['pending_vaga'] is None
+            assert rooms[0]['last_message']['vaga'] is None
+            assert rooms[0]['vaga']['titulo'] == 'Backend Django'
+            assert rooms[0]['vaga']['id'] == self.vaga.pk
+
+    def test_vaga_follows_the_newest_card(self):
+        client = client_for(self.ana)
+        client.post(messages_url(self.room_id), {'body': 'Oi!'}, format='json')
+        open_room(self.ana, make_candidatura(self.ana, make_vaga(self.bia, titulo='Frontend Vue')))
+        client.post(messages_url(self.room_id), {'body': 'E esta outra?'}, format='json')
+
+        assert self.results(self.bia)[0]['vaga']['titulo'] == 'Frontend Vue'
+
+    def test_last_card_wins_over_a_new_pending_one(self):
+        client = client_for(self.ana)
+        client.post(messages_url(self.room_id), {'body': 'Oi!'}, format='json')
+        open_room(self.ana, make_candidatura(self.ana, make_vaga(self.bia, titulo='Frontend Vue')))
+
+        room = self.results(self.ana)[0]
+
+        assert room['pending_vaga']['titulo'] == 'Frontend Vue'
+        assert room['vaga']['titulo'] == 'Backend Django'
+
+    def test_deleted_card_is_ignored(self):
+        client = client_for(self.ana)
+        message_id = client.post(messages_url(self.room_id), {'body': 'Oi!'}, format='json').data['id']
+        services.delete_message(self.ana, Room.objects.get(pk=self.room_id), message_id)
+        client.post(messages_url(self.room_id), {'body': 'de novo'}, format='json')
+
+        assert self.results(self.ana)[0]['vaga'] is None
+
+    def test_vaga_is_none_without_any_card(self):
+        client_for(self.ana).delete(f'{ROOMS_URL}{self.room_id}/context/')
+        client_for(self.ana).post(messages_url(self.room_id), {'body': 'Oi!'}, format='json')
+
+        assert self.results(self.bia)[0]['vaga'] is None
+
     def test_rooms_are_ordered_by_latest_message(self):
         carla = make_empresa('carla@example.com', 'Carla SA')
         second_id = open_room(self.ana, make_candidatura(self.ana, make_vaga(carla))).data['id']

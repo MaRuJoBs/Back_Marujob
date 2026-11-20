@@ -27,6 +27,8 @@ class RoomSerializer(serializers.Serializer):
     unread = serializers.IntegerField(read_only=True)
     last_message = serializers.SerializerMethodField()
     pending_vaga = serializers.SerializerMethodField()
+    # Vaga de que trata a conversa (chip na lista): o último cartão enviado; sem nenhum, o pendente.
+    vaga = serializers.SerializerMethodField()
 
     def get_name(self, room) -> str:
         other = getattr(room, 'other', None)
@@ -69,3 +71,8 @@ class RoomSerializer(serializers.Serializer):
         vaga = getattr(room, 'pending_vaga_obj', None)
 
         return services.vaga_card(vaga) if vaga is not None else None
+
+    def get_vaga(self, room) -> dict | None:
+        card = getattr(room, 'last_vaga_card', None)
+
+        return card if card else self.get_pending_vaga(room)
