@@ -21,6 +21,8 @@ from core.views import (
     TrocarSenhaView,
     UserRegistrationView,
     UserViewSet,
+    WebPushPublicKeyView,
+    WebPushSubscriptionViewSet,
 )
 from core.views.avaliacao import AvaliacaoViewSet, ConclusaoTrabalhoView
 from core.views.empresa_perfil import EmpresaLocalizacaoPublicaView, EmpresaPerfilView
@@ -40,6 +42,7 @@ router.register(r'candidaturas', CandidaturaViewSet, basename='candidaturas')
 router.register(r'notificacoes', NotificacaoViewSet, basename='notificacoes')
 router.register(r'notificacoes-freelancer', NotificacaoFreelancerViewSet, basename='notificacoes-freelancer')
 router.register(r'avaliacoes', AvaliacaoViewSet, basename='avaliacoes')
+router.register(r'webpush/subscriptions', WebPushSubscriptionViewSet, basename='webpush-subscriptions')
 urlpatterns = [
     path('admin/', admin.site.urls),
     # OpenAPI 3
@@ -61,6 +64,7 @@ urlpatterns = [
     path('api/auth/google/', GoogleLoginView.as_view(), name='google_login'),
     path('api/auth/definir-senha/', DefinirSenhaView.as_view(), name='definir_senha'),
     path('api/auth/trocar-senha/', TrocarSenhaView.as_view(), name='trocar_senha'),
+    path('api/webpush/public-key/', WebPushPublicKeyView.as_view(), name='webpush-public-key'),
     # Registro de usuários
     path('api/registro/', UserRegistrationView.as_view(), name='user_registration'),
     # API

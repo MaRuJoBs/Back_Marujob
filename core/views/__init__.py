@@ -12,3 +12,4 @@ from .portfolio import PortfolioViewSet
 from .favorito import FavoritoViewSet
 from .candidatura import CandidaturaViewSet
 from .notificacao import NotificacaoViewSet
+from .webpush import WebPushPublicKeyView, WebPushSubscriptionViewSet

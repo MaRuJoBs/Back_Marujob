@@ -2,6 +2,7 @@ from django.db import transaction
 
 from core.models import Candidatura, NotificacaoFreelancer
 from core.push_delivery import enviar_push
+from core.webpush import send_web_push
 
 
 def registrar_decisao(candidatura, status):
@@ -22,4 +23,14 @@ def registrar_decisao(candidatura, status):
         titulo=titulo,
         mensagem=mensagem,
     )
-    transaction.on_commit(lambda: enviar_push(notificacao), robust=True)
+
+    def entregar_notificacoes():
+        enviar_push(notificacao)
+        send_web_push(
+            candidatura.freelancer_id,
+            'Candidatura atualizada',
+            f'Sua candidatura para {oportunidade} foi {status}.',
+            '/minhas-candidaturas',
+        )
+
+    transaction.on_commit(entregar_notificacoes, robust=True)

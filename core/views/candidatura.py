@@ -7,7 +7,7 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from core.models import Candidatura, Notificacao
+from core.models import Candidatura, Freelance, Notificacao
 from core.notificacoes_freelancer import registrar_decisao
 from core.permissions import CandidaturaPermission
 from core.serializers.candidatura import (
@@ -28,6 +28,12 @@ class CandidaturaConflict(APIException):
     status_code = 409
     default_detail = 'A candidatura já foi analisada e não pode receber outra decisão.'
     default_code = 'candidatura_status_conflict'
+
+
+class OpportunityFull(APIException):
+    status_code = 409
+    default_detail = 'Esta oportunidade atingiu o limite de profissionais.'
+    default_code = 'oportunidade_limite_atingido'
 
 
 class CandidaturaViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewSet):
@@ -64,6 +70,16 @@ class CandidaturaViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.
                 empresa_id = candidatura.oportunidade.empresa_id
                 if empresa_id is not None:
                     Notificacao.objects.get_or_create(candidatura=candidatura, defaults={'empresa_id': empresa_id})
+                    from core.webpush import send_web_push
+
+                    transaction.on_commit(
+                        lambda: send_web_push(
+                            empresa_id,
+                            'Nova candidatura',
+                            f'{candidatura.freelancer.name} se candidatou a {candidatura.oportunidade.titulo}.',
+                            '/empresa/notificacoes',
+                        )
+                    )
         except IntegrityError:
             duplicate = Candidatura.objects.filter(
                 freelancer=self.request.user,
@@ -89,6 +105,17 @@ class CandidaturaViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.
                 if candidatura.status != status:
                     if candidatura.status != Candidatura.Status.PENDENTE:
                         raise CandidaturaConflict()
+                    if status == Candidatura.Status.APROVADA:
+                        # Serialize approvals per opportunity so concurrent decisions cannot exceed the cap.
+                        oportunidade = Freelance.objects.select_for_update().get(pk=candidatura.oportunidade_id)
+                        if (
+                            oportunidade.max_profissionais is not None
+                            and Candidatura.objects.filter(
+                                oportunidade=oportunidade,
+                                status=Candidatura.Status.APROVADA,
+                            ).count() >= oportunidade.max_profissionais
+                        ):
+                            raise OpportunityFull()
                     # Compare-and-set also protects SQLite, where SELECT FOR UPDATE is ignored.
                     changed = queryset.filter(pk=candidatura.pk, status=Candidatura.Status.PENDENTE).update(
                         status=status, atualizado_em=timezone.now()
