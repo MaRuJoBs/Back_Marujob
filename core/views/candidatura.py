@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
 from core.models import Candidatura, Notificacao
+from core.notificacoes_freelancer import registrar_decisao
 from core.permissions import CandidaturaPermission
 from core.serializers.candidatura import (
     CandidaturaCreateSerializer,
@@ -92,7 +93,9 @@ class CandidaturaViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.
                     changed = queryset.filter(pk=candidatura.pk, status=Candidatura.Status.PENDENTE).update(
                         status=status, atualizado_em=timezone.now()
                     )
-                    if not changed:
+                    if changed:
+                        registrar_decisao(candidatura, status)
+                    else:
                         candidatura.refresh_from_db()
                         if candidatura.status != status:
                             raise CandidaturaConflict()

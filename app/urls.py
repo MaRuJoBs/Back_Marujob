@@ -25,6 +25,8 @@ from core.views import (
 from core.views.avaliacao import AvaliacaoViewSet, ConclusaoTrabalhoView
 from core.views.empresa_perfil import EmpresaLocalizacaoPublicaView, EmpresaPerfilView
 from core.views.freelancer_publico import FreelancerPublicoViewSet
+from core.views.notificacao_freelancer import NotificacaoFreelancerViewSet
+from core.views.push_subscription import PushSubscriptionView, VapidPublicKeyView
 from core.views.tokens import TokenObtainPairView, TokenRefreshView, TokenVerifyView
 
 router = DefaultRouter()
@@ -36,6 +38,7 @@ router.register(r'portfolios', PortfolioViewSet, basename='portfolios')
 router.register(r'favoritos', FavoritoViewSet, basename='favoritos')
 router.register(r'candidaturas', CandidaturaViewSet, basename='candidaturas')
 router.register(r'notificacoes', NotificacaoViewSet, basename='notificacoes')
+router.register(r'notificacoes-freelancer', NotificacaoFreelancerViewSet, basename='notificacoes-freelancer')
 router.register(r'avaliacoes', AvaliacaoViewSet, basename='avaliacoes')
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -74,5 +77,7 @@ urlpatterns = [
     ),
     # Chat: precisa vir antes de 'api/' para não ser engolido pelas rotas do router.
     path('api/chat/', include('chat.urls')),
+    path('api/push/vapid-public-key/', VapidPublicKeyView.as_view(), name='push-vapid-public-key'),
+    path('api/push/subscriptions/', PushSubscriptionView.as_view(), name='push-subscriptions'),
     path('api/', include(router.urls)),
 ] + static(settings.MEDIA_URL, view=public_media, document_root=settings.MEDIA_ROOT)
