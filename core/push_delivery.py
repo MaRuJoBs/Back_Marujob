@@ -59,7 +59,9 @@ def vapid_configurado():
 
 class PushSession(requests.Session):
     def post(self, url, **kwargs):
-        response = super().post(url, **kwargs, allow_redirects=False)
+        if not endpoint_permitido(url):
+            raise WebPushException('Endpoint do Push Service inválido.')
+        response = super().post(url, **kwargs, allow_redirects=False, stream=True)
         if not HTTPStatus.OK <= response.status_code <= HTTPStatus.ACCEPTED:
             raise WebPushException('Push Service recusou a entrega.', response=response)
         return response

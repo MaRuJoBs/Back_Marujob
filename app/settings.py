@@ -78,9 +78,6 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '').strip()
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '').strip()
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', '').strip()
-WEBPUSH_VAPID_PUBLIC_KEY = os.getenv('WEBPUSH_VAPID_PUBLIC_KEY', '').strip()
-WEBPUSH_VAPID_PRIVATE_KEY = os.getenv('WEBPUSH_VAPID_PRIVATE_KEY', '').strip()
-WEBPUSH_VAPID_SUBJECT = os.getenv('WEBPUSH_VAPID_SUBJECT', '').strip()
 # Enable only behind a controlled proxy that strips/replaces client-supplied headers.
 TRUST_X_FORWARDED_PROTO = os.getenv('TRUST_X_FORWARDED_PROTO', 'False').strip().lower() == 'true'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_X_FORWARDED_PROTO else None

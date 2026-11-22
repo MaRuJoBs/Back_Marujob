@@ -219,6 +219,9 @@ class NotificacoesFreelancerTests(APITestCase):
         for endpoint in (
             'http://fcm.googleapis.com/fcm/send/teste',
             'https://127.0.0.1/fcm/send/teste',
+            'https://[::1]/fcm/send/teste',
+            'https://fcm.googleapis.com:443/fcm/send/teste',
+            'https://fcm.googleapis.com.invalid/fcm/send/teste',
             'https://fcm.googleapis.com@127.0.0.1/fcm/send/teste',
             'https://fcm.googleapis.com/fcm/send/%2e%2e',
             'https://fcm.googleapis.com/fcm/send/..',
@@ -308,6 +311,29 @@ class NotificacoesFreelancerTests(APITestCase):
         self.assertEqual(headers['content-encoding'], 'aes128gcm')
         self.assertNotIn(b'candidatura_recusada', post.call_args.kwargs['data'])
         self.assertFalse(post.call_args.kwargs['allow_redirects'])
+        self.assertTrue(post.call_args.kwargs['stream'])
+        self.assertEqual(post.call_args.kwargs['timeout'], 2)
+
+    def test_envio_ignora_endpoint_invalido_ja_persistido(self):
+        self.ativar_vapid()
+        candidatura = self.candidatar(self.freelancer, self.vaga)
+        dados = subscription()
+        PushSubscription.objects.create(
+            usuario=self.freelancer,
+            endpoint='https://127.0.0.1/fcm/send/local',
+            **dados['keys'],
+        )
+        self.login(self.empresa)
+        with patch('core.push_delivery.webpush') as envio, self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.decidir(candidatura, 'aprovar').status_code, 200)
+        envio.assert_not_called()
+        self.assertTrue(NotificacaoFreelancer.objects.filter(candidatura_id=candidatura).exists())
+
+    def test_transporte_recusa_destino_fora_da_lista_antes_do_http(self):
+        with PushSession() as sessao, patch('requests.Session.post') as post:
+            with self.assertRaises(WebPushException):
+                sessao.post('https://127.0.0.1/fcm/send/local', timeout=2)
+        post.assert_not_called()
 
     def test_transporte_bloqueia_redirecionamento(self):
         resposta = Response()
@@ -359,8 +385,8 @@ class NotificacaoDecisaoConcorrenteTests(APITransactionTestCase):
 class NotificacaoMigrationTests(TransactionTestCase):
     def test_upgrade_a_partir_da_dev_preserva_dados_sem_backfill(self):
         anterior = [('core', '0024_empresaperfil_bairro')]
-        atual = [('core', '0025_notificacoes_freelancer_push')]
         executor = MigrationExecutor(connection)
+        atual = executor.loader.graph.leaf_nodes()
         self.addCleanup(lambda: MigrationExecutor(connection).migrate(atual))
         modelos = executor.migrate(anterior).apps
         usuario = modelos.get_model('core', 'User')
