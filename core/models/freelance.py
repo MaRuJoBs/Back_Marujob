@@ -80,6 +80,7 @@ class Freelance(models.Model):
     cidade = models.CharField(max_length=100, blank=True, default='')
     uf = models.CharField(max_length=2, choices=UF_CHOICES, blank=True, default='')
     status = models.CharField(max_length=9, choices=Status.choices, default=Status.PUBLICADA)
+    max_profissionais = models.PositiveIntegerField(blank=True, null=True)
     requisitos = models.TextField(max_length=1000, blank=True, default='')
     beneficios = models.TextField(max_length=1000, blank=True, default='')
     tipo_contratacao = models.CharField(max_length=20, choices=TipoContratacao.choices, blank=True, default='')
