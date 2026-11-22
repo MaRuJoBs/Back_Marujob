@@ -55,6 +55,11 @@ class CandidaturaPermission(BasePermission):
         return role == 'empresa' and obj.oportunidade.empresa_id == request.user.pk
 
 
+class FreelancerNotificationPermission(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and account_type(request.user) == 'usuario'
+
+
 class NotificacaoEmpresaPermission(BasePermission):
     def has_permission(self, request, view):
         return bool(request.user.is_authenticated and account_type(request.user) == 'empresa')
