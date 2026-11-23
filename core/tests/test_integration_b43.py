@@ -11,7 +11,16 @@ from django.contrib.auth.models import Group
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from core.models import Candidatura, EmpresaPerfil, Favorito, Freelance, Notificacao, Portfolio, User
+from core.models import (
+    Candidatura,
+    EmpresaPerfil,
+    Favorito,
+    Freelance,
+    Notificacao,
+    NotificacaoFreelancer,
+    Portfolio,
+    User,
+)
 
 
 class BackendJourneyTests(APITestCase):
@@ -250,6 +259,32 @@ class BackendJourneyTests(APITestCase):
             model.__name__: list(model.objects.order_by('pk').values())
             for model in [Freelance, Portfolio, Candidatura, Notificacao, EmpresaPerfil, Favorito]
         }
+
+    def test_decision_history_and_company_location_in_the_jwt_journey(self):
+        self.call('company_a', 'patch', '/api/empresas/me/', {'cidade': 'Joinville', 'uf': 'SC', 'bairro': 'Centro'})
+        public_location = f'/api/empresas/{self.ids["company_a"]}/localizacao/'
+        self.assertEqual(self.call(None, 'get', public_location), {'cidade': 'Joinville', 'uf': 'SC'})
+
+        job_id = self.create_job()
+        application = self.call('worker_a', 'post', '/api/candidaturas/', {'oportunidade': job_id}, expected=201)
+        self.call('company_a', 'post', f'/api/candidaturas/{application["id"]}/aprovar/')
+
+        history = '/api/notificacoes-freelancer/'
+        unread = self.call('worker_a', 'get', history, {'lida': 'false'})
+        self.assertEqual(unread['count'], 1)
+        event = unread['results'][0]
+        self.assertEqual(event['candidatura'], application['id'])
+        self.assertEqual(event['evento'], 'candidatura_aprovada')
+        mark_read = f'{history}{event["id"]}/marcar-lida/'
+        for actor, expected in [('worker_b', 404), ('company_a', 403), ('company_b', 403), (None, 401)]:
+            with self.subTest(actor=actor):
+                self.call(actor, 'patch', mark_read, expected=expected)
+                self.assertFalse(NotificacaoFreelancer.objects.get(pk=event['id']).lida)
+        self.call('worker_a', 'patch', mark_read)
+        self.assertEqual(self.call('worker_a', 'get', history, {'lida': 'false'})['count'], 0)
+
+        self.actors['worker_a'].credentials()
+        self.call('worker_a', 'get', history, expected=401)
 
     def test_http_role_matrix_denied_operations_leave_business_database_unchanged(self):
         job_id = self.create_job()

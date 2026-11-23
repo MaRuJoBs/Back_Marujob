@@ -5,17 +5,22 @@ Os eventos carregam JSON puro; o consumer acrescenta o que depende de quem receb
 """
 
 import json
+import logging
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from rest_framework.renderers import JSONRenderer
 
 from . import services
 from .models import Membership, Message, UserPresence
 from .serializers import ChatUserSerializer, MessageSerializer
+
+logger = logging.getLogger('chat')
 
 
 def user_group(user_id):
@@ -31,7 +36,11 @@ def _send(user_ids, event):
     send = async_to_sync(get_channel_layer().group_send)
 
     for user_id in set(user_ids):
-        send(user_group(user_id), event)
+        try:
+            send(user_group(user_id), event)
+        except (RedisConnectionError, RedisTimeoutError):
+            # O histórico continua disponível quando a publicação em tempo real falha.
+            logger.warning('Chat: publicação em tempo real indisponível.')
 
 
 def _message_event(event_type, message):

@@ -77,9 +77,11 @@ class OpportunityQueryTests(APITestCase):  # noqa: PLR0904 -- opportunity API in
                 'cidade',
                 'uf',
                 'status',
+                'max_profissionais',
             },
         )
         self.assertIsNone(detail['empresa'])
+        self.assertIsNone(detail['max_profissionais'])
 
     def test_empty_collection(self):
         Freelance.objects.all().delete()
