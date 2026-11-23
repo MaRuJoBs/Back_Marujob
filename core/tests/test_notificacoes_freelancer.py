@@ -4,7 +4,7 @@ import base64
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from threading import Barrier
+from threading import Barrier, Event
 from unittest.mock import patch
 
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -380,6 +380,56 @@ class NotificacaoDecisaoConcorrenteTests(APITransactionTestCase):
         self.assertEqual(notificacao.destinatario, freelancer)
         self.assertEqual(notificacao.evento, f'candidatura_{candidatura.status}')
         push.assert_called_once_with(notificacao)
+
+
+class PushSubscriptionConcurrencyTests(APITransactionTestCase):
+    def test_cadastros_concorrentes_respeitam_limite_de_dispositivos(self):
+        freelancer = User.objects.create_user('b58-push@example.invalid')
+        grupo, _ = Group.objects.get_or_create(name='Usuário')
+        freelancer.groups.add(grupo)
+        for indice in range(MAX_DEVICES - 1):
+            dados = subscription(f'b58-existing-{indice}')
+            PushSubscription.objects.create(usuario=freelancer, endpoint=dados['endpoint'], **dados['keys'])
+        novos = [subscription('b58-device-a'), subscription('b58-device-b')]
+        disputou_bloqueio = Event()
+        barreira = Barrier(2, action=disputou_bloqueio.set)
+        select_for_update = type(User.objects.all()).select_for_update
+
+        def sincronizar_bloqueio(queryset, *args, **kwargs):
+            if queryset.model is User:
+                barreira.wait(timeout=10)
+            return select_for_update(queryset, *args, **kwargs)
+
+        def cadastrar(dados):
+            try:
+                cliente = APIClient()
+                cliente.force_authenticate(freelancer)
+                return cliente.post(SUBSCRIPTIONS, dados, format='json')
+            finally:
+                connections.close_all()
+
+        with patch('core.views.push_subscription.vapid_configurado', return_value=object()):
+            with (
+                patch('django.db.models.query.QuerySet.select_for_update', sincronizar_bloqueio),
+                ThreadPoolExecutor(max_workers=2) as pool,
+            ):
+                respostas = list(pool.map(cadastrar, novos))
+            self.assertTrue(disputou_bloqueio.is_set())
+            if connection.vendor == 'sqlite':
+                respostas = [
+                    cadastrar(dados) if resposta.status_code == status.HTTP_503_SERVICE_UNAVAILABLE else resposta
+                    for dados, resposta in zip(novos, respostas, strict=True)
+                ]
+
+        codigos = [resposta.status_code for resposta in respostas]
+        self.assertCountEqual(codigos, [status.HTTP_204_NO_CONTENT, status.HTTP_400_BAD_REQUEST])
+        rejeicao = codigos.index(status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(respostas[rejeicao].data['endpoint'], f'Limite de {MAX_DEVICES} dispositivos por conta.')
+        self.assertEqual(PushSubscription.objects.filter(usuario=freelancer).count(), MAX_DEVICES)
+        endpoint = novos[codigos.index(status.HTTP_204_NO_CONTENT)]['endpoint']
+        self.assertEqual(PushSubscription.objects.get(endpoint=endpoint).usuario_id, freelancer.pk)
+        recusado = novos[rejeicao]['endpoint']
+        self.assertFalse(PushSubscription.objects.filter(endpoint=recusado).exists())
 
 
 class NotificacaoMigrationTests(TransactionTestCase):

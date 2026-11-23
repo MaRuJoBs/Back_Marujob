@@ -408,7 +408,8 @@ class DecisaoConcurrencyTests(TransactionTestCase):
         original = Candidatura.objects.all().__class__.select_for_update
 
         def synchronized_lock(queryset, *args, **kwargs):
-            barrier.wait(timeout=10)
+            if queryset.model is Candidatura:
+                barrier.wait(timeout=10)
             return original(queryset, *args, **kwargs)
 
         def submit(action):

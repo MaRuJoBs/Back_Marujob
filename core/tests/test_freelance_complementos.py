@@ -16,7 +16,7 @@ class FreelanceComplementTests(APITestCase):  # noqa: PLR0904 -- opportunity int
     url = '/api/freelances/'
     old_fields = {'id', 'empresa', 'titulo', 'descricao', 'tag', 'preco', 'tempo'}
     text_fields = {'requisitos', 'beneficios', 'tipo_contratacao', 'nivel_experiencia', 'jornada_trabalho'}
-    nullable_fields = {'data_publicacao', 'salario_minimo', 'salario_maximo'}
+    nullable_fields = {'data_publicacao', 'salario_minimo', 'salario_maximo', 'max_profissionais'}
     complete_data = {
         'titulo': 'Desenvolver uma página',
         'descricao': 'Modalidade: Remoto\n\nDesenvolvimento de uma página responsiva.',
@@ -31,6 +31,7 @@ class FreelanceComplementTests(APITestCase):  # noqa: PLR0904 -- opportunity int
         'data_publicacao': '2026-10-30',
         'salario_minimo': '2000.50',
         'salario_maximo': '3500.00',
+        'max_profissionais': 3,
     }
 
     @classmethod
@@ -81,6 +82,7 @@ class FreelanceComplementTests(APITestCase):  # noqa: PLR0904 -- opportunity int
         self.assertEqual(job.data_publicacao, date(2026, 10, 30))
         self.assertEqual(job.salario_minimo, Decimal('2000.50'))
         self.assertEqual(job.salario_maximo, Decimal('3500.00'))
+        self.assertEqual(job.max_profissionais, 3)
         for field in self.text_fields:
             self.assertEqual(getattr(job, field), self.complete_data[field])
         self.assertEqual(job.preco, Decimal('1500.00'))

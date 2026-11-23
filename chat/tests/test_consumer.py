@@ -340,6 +340,27 @@ class ConsumerTests(TransactionTestCase):
 
         await ana.disconnect()
 
+    async def test_reconnecting_participant_receives_new_messages(self):
+        ana, bia = await self.connect_both()
+        await bia.disconnect()
+        self.assertFalse((await next_event(ana, 'presence'))['online'])
+
+        reconnected = await open_socket(self.bia)
+        try:
+            presence = await next_event(ana, 'presence')
+            self.assertEqual(presence['user_id'], self.bia.pk)
+            self.assertTrue(presence['online'])
+            await ana.send_json_to({'action': 'send', 'room': self.room.pk, 'body': 'Mensagem após reconectar'})
+            event = await next_event(reconnected, 'message.new')
+            self.assertEqual(event['room'], self.room.pk)
+            self.assertEqual(event['message']['body'], 'Mensagem após reconectar')
+            await next_event(reconnected, 'room.updated')
+            state = await database_sync_to_async(UserPresence.objects.get)(user=self.bia)
+            self.assertEqual(state.connections, 1)
+        finally:
+            await reconnected.disconnect()
+            await ana.disconnect()
+
     async def test_two_tabs_keep_the_user_online_until_the_last_one_closes(self):
         ana = await open_socket(self.ana)
         first_tab = await open_socket(self.bia)

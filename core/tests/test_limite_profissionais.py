@@ -1,8 +1,13 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Event
+from unittest.mock import patch
+
 from django.contrib.auth.models import Group
-from django.db import connection
+from django.db import connection, connections
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
-from rest_framework.test import APITestCase
+from rest_framework import status
+from rest_framework.test import APIClient, APITestCase
 
 from core.models import Candidatura, Freelance, NotificacaoFreelancer, User
 
@@ -29,6 +34,64 @@ class LimiteProfissionaisTests(APITestCase):
         self.assertFalse(NotificacaoFreelancer.objects.filter(candidatura=segundo).exists())
         self.assertEqual(self.client.post(f'/api/candidaturas/{segundo.pk}/recusar/').status_code, 200)
         self.assertEqual(NotificacaoFreelancer.objects.filter(candidatura=primeiro).count(), 1)
+
+
+class LimiteProfissionaisConcurrencyTests(TransactionTestCase):
+    def test_aprovacoes_concorrentes_disputam_a_ultima_vaga(self):
+        empresa = User.objects.create_user('b58-empresa@example.invalid')
+        grupo, _ = Group.objects.get_or_create(name='Empresa')
+        empresa.groups.add(grupo)
+        vaga = Freelance.objects.create(empresa=empresa, titulo='Design', preco=10, tempo='Livre', max_profissionais=1)
+        candidaturas = [
+            Candidatura.objects.create(
+                freelancer=User.objects.create_user(f'b58-freelancer-{indice}@example.invalid'),
+                oportunidade=vaga,
+            )
+            for indice in range(2)
+        ]
+        urls = [f'/api/candidaturas/{candidatura.pk}/aprovar/' for candidatura in candidaturas]
+        disputou_bloqueio = Event()
+        barreira = Barrier(2, action=disputou_bloqueio.set)
+        select_for_update = type(Freelance.objects.all()).select_for_update
+
+        def sincronizar_bloqueio(queryset, *args, **kwargs):
+            if queryset.model is Freelance:
+                barreira.wait(timeout=10)
+            return select_for_update(queryset, *args, **kwargs)
+
+        def aprovar(url):
+            cliente = APIClient()
+            cliente.force_authenticate(empresa)
+            try:
+                return cliente.post(url).status_code
+            finally:
+                connections.close_all()
+
+        with patch('core.notificacoes_freelancer.enviar_push') as push:
+            with (
+                patch('django.db.models.query.QuerySet.select_for_update', sincronizar_bloqueio),
+                ThreadPoolExecutor(max_workers=2) as pool,
+            ):
+                respostas = list(pool.map(aprovar, urls))
+
+            self.assertTrue(disputou_bloqueio.is_set())
+            if connection.vendor == 'sqlite':
+                # Contenção do SQLite pode exigir repetição após o fim das duas transações.
+                self.assertTrue(set(respostas) <= {200, 409, 503}, respostas)
+                self.assertLessEqual(respostas.count(200), 1, respostas)
+                respostas = [
+                    aprovar(url) if codigo == status.HTTP_503_SERVICE_UNAVAILABLE else codigo
+                    for url, codigo in zip(urls, respostas, strict=True)
+                ]
+
+            self.assertCountEqual(respostas, [200, 409])
+            vencedora = Candidatura.objects.get(oportunidade=vaga, status=Candidatura.Status.APROVADA)
+            self.assertEqual(vencedora.pk, candidaturas[respostas.index(200)].pk)
+            self.assertEqual(Candidatura.objects.get(pk=candidaturas[respostas.index(409)].pk).status, 'pendente')
+            aviso = NotificacaoFreelancer.objects.get(candidatura__oportunidade=vaga)
+            self.assertEqual(aviso.candidatura_id, vencedora.pk)
+            self.assertEqual(aviso.destinatario_id, vencedora.freelancer_id)
+            push.assert_called_once_with(aviso)
 
 
 class LimiteProfissionaisMigrationTests(TransactionTestCase):

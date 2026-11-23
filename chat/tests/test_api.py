@@ -1,8 +1,12 @@
 import shutil
 import tempfile
+from unittest.mock import patch
 
+from channels.layers import get_channel_layer
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from rest_framework.test import APITestCase
 
 from chat import services
@@ -303,6 +307,27 @@ class MessageTests(APITestCase):
         self.assertEqual(first.data['vaga']['id'], self.vaga.pk)
         self.assertIsNone(second.data['vaga'])
         self.assertIsNone(self.ana_client.get(f'{ROOMS_URL}{self.room_id}/').data['pending_vaga'])
+
+    def test_message_remains_available_in_history_when_redis_is_unavailable(self):
+        self.ana_client.raise_request_exception = False
+        saved_ids = []
+        for failure_type in (RedisConnectionError, RedisTimeoutError):
+            with self.subTest(failure_type=failure_type.__name__):
+                failure = failure_type('diagnóstico sintético do transporte')
+                with (
+                    patch.object(get_channel_layer(), 'group_send', side_effect=failure) as broadcast,
+                    self.assertLogs('chat', level='WARNING') as logs,
+                ):
+                    response = self.send(self.ana_client, 'Mensagem persistida')
+
+                self.assertEqual(response.status_code, 201)
+                saved_ids.append(response.data['id'])
+                history = self.bia_client.get(messages_url(self.room_id)).data['results']
+                self.assertEqual([message['id'] for message in history], saved_ids)
+                self.assertEqual(broadcast.await_count, 2)
+                for record in logs.records:
+                    self.assertEqual(record.getMessage(), 'Chat: publicação em tempo real indisponível.')
+                    self.assertIsNone(record.exc_info)
 
     def test_the_other_person_does_not_get_a_card_from_a_reply(self):
         self.send(self.ana_client, 'Oi!')
