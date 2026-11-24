@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from django.contrib.auth.models import Group
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.exceptions import ImproperlyConfigured
+from django.db import IntegrityError
 from django.http import HttpResponse
 from django.middleware.csrf import CsrfViewMiddleware, get_token
 from django.test import RequestFactory, SimpleTestCase, override_settings
@@ -50,7 +51,13 @@ class AuthenticationTests(APITestCase):
                 self.assertNotIn('password', response.data)
                 user = User.objects.get(email=data['email'])
                 self.assertTrue(user.check_password(self.password))
-                self.assertTrue(user.groups.filter(name=group).exists())
+                self.assertEqual(list(user.groups.values_list('name', flat=True)), [group])
+                login = self.client.post('/api/token/', {'email': user.email, 'password': self.password})
+                self.assertEqual(login.status_code, 200, login.data)
+                profile = self.client.get('/api/usuarios/me/', HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
+                self.assertEqual(profile.status_code, 200, profile.data)
+                self.assertEqual(profile.data['tipo'], tipo)
+                self.assertEqual([item['name'] for item in profile.data['groups']], [group])
                 data['email'] = data['email'].upper()
                 self.assertEqual(self.client.post('/api/registro/', data).status_code, 400)
         self.assertEqual(self.client.post('/api/registro/', {}).status_code, 400)
@@ -65,6 +72,35 @@ class AuthenticationTests(APITestCase):
             ).status_code,
             400,
         )
+
+    @patch('core.views.user.id_token.verify_oauth2_token')
+    def test_registration_rolls_back_when_group_assignment_fails(self, verify):
+        verify.return_value = {
+            'email': 'rollback-google@example.com',
+            'email_verified': True,
+            'sub': 'rollback-google',
+            'aud': 'test-client',
+        }
+        registrations = [
+            (
+                '/api/registro/',
+                {'email': 'rollback-password@example.com', 'password': self.password, 'tipo': 'usuario'},
+                'rollback-password@example.com',
+            ),
+            (
+                '/api/auth/google/',
+                {'credential': 'verified', 'tipo': 'empresa', 'cadastro': True},
+                verify.return_value['email'],
+            ),
+        ]
+        for endpoint, data, email in registrations:
+            with self.subTest(endpoint=endpoint), patch.object(
+                User.groups.related_manager_cls, 'add', side_effect=IntegrityError
+            ) as assign_group:
+                response = self.client.post(endpoint, data, format='json')
+                assign_group.assert_called_once()
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertFalse(User.objects.filter(email=email).exists())
 
     def test_jwt(self):
         response = self.client.post('/api/token/', {'email': self.worker.email, 'password': self.password})
@@ -244,7 +280,13 @@ class AuthenticationTests(APITestCase):
             self.assertEqual(response.status_code, 200, response.data)
             self.assertEqual(verify.call_args.args[2], 'test-client')
             self.assertEqual(response.data['user']['tipo'], tipo)
-            self.assertEqual(response.data['user']['groups'][0]['name'], group)
+            self.assertEqual([item['name'] for item in response.data['user']['groups']], [group])
+            user = User.objects.get(email=verify.return_value['email'])
+            self.assertEqual(list(user.groups.values_list('name', flat=True)), [group])
+            profile = self.client.get('/api/usuarios/me/', HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+            self.assertEqual(profile.status_code, 200, profile.data)
+            self.assertEqual(profile.data['tipo'], tipo)
+            self.assertEqual([item['name'] for item in profile.data['groups']], [group])
             self.assertTrue(response.data['precisa_definir_senha'])
             self.assertEqual(self.client.post(url, {'credential': 'valid', 'cadastro': 'false'}).status_code, 200)
             self.assertEqual(
