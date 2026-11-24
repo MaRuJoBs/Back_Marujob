@@ -151,3 +151,280 @@ Os resultados da revisão estão em `/tmp/marujob-B58-review-{baseline,final,pg-
 **Título** — B58 · Regressão de permissões, concorrência e resiliência do chat
 
 **Descrição** — Corrige o retorno HTTP 500 após persistência de mensagens quando a publicação em Redis falha. Atualiza verificações estritas do contrato B62 e amplia as suítes existentes para aprovações e dispositivos concorrentes, reconexão WebSocket e isolamento do histórico B60 via JWT. A suíte passou com 446 testes em SQLite e PostgreSQL 18 com `C.utf8`. A auditoria segue parcial até confirmar B55, B56, a collation do ambiente publicado e a homologação operacional. Recomenda-se PR em rascunho para revisão técnica enquanto essas pendências estiverem abertas.
+
+## Homologação B58 · 24/11/2026
+
+A branch `B58-homologacao` foi criada em worktree isolada no commit
+`9ba765195e38eec2d1e6740796ab2f4ee5e64705`. O `git fetch origin --prune`
+falhou na resolução DNS de GitHub. A comparação ao vivo pelo conector do GitHub
+confirmou que a DEV estava na mesma ponta, com divergência 0/0. O PR #31 foi
+integrado à DEV nesse commit. Ele já está na base da worktree, sem commits
+posteriores da DEV a incorporar. A worktree original preservou as alterações
+locais em `.pdm-python`, `.vscode/settings.json` e `db.sqlite3`.
+[PR #31](https://github.com/MaRuJoBs/Back_Marujob/pull/31)
+
+### Código, banco e migrações
+
+- O OpenAPI passou a documentar os corpos de entrada e de sucesso do login
+  Google e das operações de definir e trocar senha. Os handlers HTTP e as
+  permissões dessas rotas seguem com o comportamento anterior.
+- A inspeção do schema gerado confirmou as três operações, os componentes de
+  entrada e resposta e a exigência de JWT nas operações de senha. O
+  `check --deploy` sintético passou com dez avisos, oito de OpenAPI e dois de
+  HSTS. Os três avisos de rotas omitidas foram resolvidos. O aviso de tipo
+  de `get_tipo` também aparece na rota Google agora documentada. Permanecem
+  avisos sobre tipos de campos e parâmetros e sobre componentes aninhados.
+- `check` passou sem questões. `makemigrations --check --dry-run` passou
+  sem mudanças e `showmigrations --plan` listou 48 entradas no banco
+  descartável. A alteração de documentação da API dispensa migration.
+- O diretório usa regex com correspondência sem distinção de caixa para nome,
+  profissão e cidade. PostgreSQL com locale `C` faz classificação de caixa de
+  letras ASCII. A B58 anterior reproduziu duas falhas em `C` e aprovou a suíte
+  em `C.utf8`. Esta sessão dispõe apenas do cliente PostgreSQL, sem servidor
+  descartável disponível. A versão, o encoding, o provedor de collation e o
+  `LC_CTYPE` do banco hospedado seguem por confirmar. A consulta do diretório
+  foi preservada até ser possível testar uma correção no ambiente compatível.
+  [Collations do PostgreSQL](https://www.postgresql.org/docs/18/collation.html)
+
+### Simulações e inspeção de infraestrutura
+
+- A suíte usa SQLite em memória, contas fictícias e o runner B54 com dotenv
+  desabilitado e bloqueio de conexões externas. As verificações de Redis,
+  Google, Cloudinary e Web Push previstas na suíte usam simulações na fronteira
+  do serviço. O WebSocket usa o consumidor ASGI em processo.
+- A configuração sintética exige hosts explícitos, segredo forte e DEBUG
+  desativado, restringe CORS/CSRF a origens HTTPS explícitas e habilita cookies
+  seguros, redirecionamento HTTPS e HSTS de 3600 segundos. Subdomínios e
+  preload exigem confirmação operacional. Há limites de upload e de rotas
+  sensíveis. O Redis é compartilhado para canais e contadores quando
+  configurado. O fallback é por processo. Um GET anônimo via HTTPS ao admin
+  na configuração sintética redirecionou para a página de login.
+- O login Google, o processamento de imagens, o download autorizado do chat e
+  o histórico de notificações têm contratos e testes existentes. Em particular,
+  o teste de publicação interrompida cobre persistência e recuperação pelo
+  histórico REST. A recuperação automática pelo cliente e o Redis real durante
+  inscrição/reconexão ficaram pendentes.
+- A expiração, inativação e troca de senha fazem a conexão perder acesso no
+  próximo evento. Sair removendo a credencial local só encerra a sessão desse
+  cliente. O backend atual carece de logout com revogação de JWT já emitido.
+  A política de logout e fechamento do socket precisa ser confirmada em
+  homologação. A transferência de Web Push entre contas usa o endpoint e as
+  chaves do dispositivo. A entrega real e a troca de conta no navegador
+  permanecem pendentes.
+- O README menciona Render e PostgreSQL como opções do template. Isso só
+  identifica a infraestrutura sugerida pelo repositório. Sem identificação e
+  acesso autorizado ao serviço real, ficaram pendentes versão e collation do
+  banco, migrations aplicadas, backup restaurável, Redis compartilhado, proxy,
+  HTTPS, origens, IP real e limites de borda, logs sem JWT na query,
+  configuração de segredos, Google OAuth, Cloudinary e Web Push em navegadores.
+  A revisão foi local. `build.sh` e `Procfile` contêm execução de migrations, então
+  iniciar o fluxo de publicação pode alterar o banco.
+- B55 e B56 seguem **sem escopo documentado**. A busca nos metadados do GitHub,
+  histórico, branches e documentação disponíveis não encontrou critérios de
+  aceite. Chat REST/WebSocket, B59, B60 e B62 já constam na DEV. Atribuir
+  qualquer dessas funcionalidades a B55/B56 exige a referência de escopo.
+
+### Resultado dos testes desta revisão
+
+| Execução | Resultado |
+| --- | --- |
+| SQLite em memória, seleção dos 422 casos síncronos após reinício da sessão | 421 aprovados, zero falhas de asserção e um erro. O teste do runner recebeu `EPERM` na escrita em um socketpair local. |
+| SQLite em memória, suíte integral de 446 casos | A sessão foi interrompida após registrar dois erros em testes WebSocket. Um desses erros, na conexão anônima, foi reproduzido isoladamente como timeout no handshake do comunicador ASGI. Restaram 22 dos 24 casos assíncronos sem veredito confirmado. |
+| PostgreSQL e Redis reais | Sem servidor descartável disponível nesta sessão. |
+| Hospedagem | Verificações operacionais pendentes de identificação e acesso autorizado. |
+
+O resultado consolidado por caso foi de 421 aprovados, zero falhas de
+asserção, três erros e 22 sem resultado confirmado. A seleção síncrona
+incluiu permissões, candidaturas, avaliações, concorrência, migrações, chat
+REST, notificações e Web Push simulado. O erro do socketpair confirma uma
+restrição do ambiente do runner. Os erros WebSocket continuam sem causa
+confirmada nesta execução e bloqueiam o aceite do chat. A referência de 446
+aprovações da revisão anterior permanece histórica.
+
+### Dados versionados · bloqueador de homologação
+
+O inventário agregado de HEAD confirmou 11 registros de conta em
+`db.sqlite3`, dois em `dump.json` e 17 arquivos em `media/`. Cada registro de
+conta contado tem e-mail e hash de senha preenchidos. Os totais por artefato
+podem se sobrepor. Quatro imagens possuem EXIF. Nenhuma tinha a tag GPS
+inspecionada. As referências Git disponíveis contêm 23 commits que tocaram o
+banco, três que tocaram o dump e seis que tocaram mídia. O inventário não
+determinou a origem dos registros. Também não confirma ausência de segredos
+em revisões antigas. Nenhum valor de registro foi publicado no relatório.
+
+Antes de liberar o ambiente para homologação, os responsáveis devem confirmar
+origem e público exposto, restringir acesso aos artefatos e avaliar eventual
+troca de credenciais ou revogação de sessões se os dados forem reais ou
+reutilizados. Retirada do índice, tratamento do histórico e cópias, e
+revogação de URLs legadas de mídia exigem uma intervenção autorizada e
+coordenada. A regra de ignore existente cobre novos arquivos dessas
+categorias e não elimina cópias já versionadas.
+
+### B63 · viabilidade do povoamento demonstrativo
+
+Os modelos existentes suportam os quantitativos solicitados. Criar 20 contas
+ativas com papel exclusivo Empresa e até um `EmpresaPerfil` por conta, 40
+contas ativas com papel exclusivo Usuário, 60 `Freelance` vinculadas às
+empresas, 50 `Portfolio` vinculados aos freelancers e 30 `Candidatura` com
+pares distintos de freelancer e vaga. Respeitar unicidade de e-mail,
+`google_id` quando preenchido e par freelancer/vaga. Usar os validadores
+existentes e as regras de status, localização e limite de profissionais das
+vagas. A publicação no diretório exige `perfil_publico` no freelancer ativo e
+elegível. Cada projeto exibido exige também `publico`. Ambos os flags
+começam desativados.
+
+A criação de candidatura pelo fluxo da API gera notificação para a empresa.
+Decisões podem registrar histórico e disparar Web Push após commit.
+A execução futura precisa isolar as contas e o transporte externo e cuidar
+dos side effects de uploads. Usar identificação de lote, IDs registrados
+fora dos dados públicos, e-mails fictícios únicos, execução idempotente e
+plano de remoção pelo manifesto. Validar backup com restauração em ambiente
+separado antes da execução hospedada. A B63 depende de autorização própria.
+Nenhum dado demonstrativo foi criado.
+
+## Revalidação direcionada para a entrega · 24/11/2026
+
+### Exposição dos artefatos
+
+O metadado `visibility` do GitHub retornou `public` para
+`MaRuJoBs/Back_Marujob`. O commit da DEV auditado contém o banco, o dump e
+os 17 arquivos de mídia já inventariados. Os 11 registros do banco e os
+dois do dump usam endereços em domínios não reservados para exemplos.
+Dois registros do banco têm identificador externo preenchido no campo de
+Google. Esses sinais, junto com os hashes e a mídia com EXIF, justificam
+tratar o conteúdo como potencialmente real. A inspeção agregada não verificou
+titularidade, origem, validade das credenciais ou publicação de cada URL
+legada. Não houve contato com as contas ou divulgação de valores.
+[Repositório no GitHub](https://github.com/MaRuJoBs/Back_Marujob)
+
+Os responsáveis devem avaliar contenção imediata do acesso ao repositório,
+inventariar revisões e cópias públicas e identificar a origem dos registros.
+Se os dados forem reais, tratar a exposição com os responsáveis por
+privacidade e avaliar redefinição de senhas, revogação de sessões e
+rotação de credenciais possivelmente expostas. Uma mudança de visibilidade
+não recolhe clones já feitos. A retirada dos arquivos do versionamento,
+o tratamento do histórico, forks e caches e a revogação de URLs legadas
+precisam ser coordenados e autorizados. Preparar fixtures sintéticas sem
+dados pessoais para substituir esses artefatos. Nenhum arquivo foi
+removido e nenhuma referência Git foi alterada nesta revisão.
+
+### Autenticação e demonstração
+
+A execução dirigida a autenticação, segurança B54 e jornadas B43 aprovou
+49 testes em SQLite em memória. A verificação do OpenAPI anterior confirmou
+os três contratos e foi feita sobre a mesma versão de `core/views/user.py`.
+Essas evidências sustentam demonstração local das jornadas REST aprovadas
+com contas fictícias e banco descartável. Google e serviços externos
+foram simulados. A disponibilidade do ambiente publicado, dos serviços
+integrados e do banco hospedado continua sem validação autorizada.
+
+### Diagnóstico dos três erros
+
+O teste B54 do runner voltou a acusar erro. Um controle sob o runner
+reproduziu `EPERM` na escrita de um socketpair local, sem passar pelo
+backend. A abertura de socket IPv4 também recebeu `EPERM`.
+
+Os dois testes WebSocket originais foram reexecutados com observação
+temporária da escrita em sockets. Em ambos, `asyncio` recebeu `EPERM`
+em `_write_to_self` ao tentar acordar o loop, seguido do timeout no
+comunicador ASGI. Um controle sem Django e sem código do MaRuJoB's
+confirmou o padrão: o comunicador devolveu o fechamento 4401 em execução
+direta, mas expirou quando a chamada cruzou `async_to_sync` e
+`sync_to_async`. Isso explica os dois erros observados e o erro do runner.
+A restrição impede usar esses resultados como aceite funcional do chat.
+
+A rodada por processo reexecutou os 24 casos WebSocket. Entre os 22
+anteriormente inconclusivos, 14 terminaram com timeout no comunicador ASGI
+e oito atingiram o limite de 22 segundos do processo. Os dois casos
+originais também tiveram timeout na reexecução instrumentada. Nenhum dos
+24 recebeu confirmação de aprovação nesta sessão. A execução completa
+desses casos em um ambiente que permita a comunicação local do loop
+permanece necessária para o aceite do chat.
+
+**Veredito para a entrega.** Demonstração local das jornadas REST aprovadas
+com dados fictícios está apta pelo teste funcional dirigido. Chat em tempo
+real e serviços hospedados permanecem sem homologação. A branch segue
+bloqueada para PR de homologação pelo aceite do WebSocket e pela exposição
+dos artefatos no repositório público.
+
+## Validação final para apresentação · 24/11/2026
+
+A worktree `B58-homologacao` continua em `9ba7651`. O fetch voltou a
+falhar por resolução DNS. A comparação atual do GitHub confirmou identidade
+com a DEV, com zero commits de diferença. O PR #31 continua na base.
+A worktree original da DEV manteve suas três alterações locais.
+
+| Verificação dirigida | Resultado |
+| --- | --- |
+| Cadastro e login por papel, JWT, jornadas B43, vagas, pesquisa, filtros, candidaturas, decisão, B62, perfil, portfólio, permissões, notificações e chat REST | 239 aprovados, zero falhas ou erros. SQLite descartável com contas fictícias e migrações aplicadas pelo runner. |
+| Chat REST com Redis indisponível simulado | O teste incluído nas 239 aprovações confirma HTTP 201, uma mensagem persistida por envio e recuperação pelo histórico autorizado após erro de conexão ou timeout de publicação. Um novo POST do cliente constitui outro envio e pode criar outra mensagem. |
+| WebSocket, reconexão e isolamento de conversa | A reexecução selecionada registrou erro no caso de reconexão. A execução atingiu o limite antes de concluir o teste de isolamento. A rodada anterior dos 24 casos e o controle com EPERM permanecem a evidência de limitação do ambiente. Não havia ambiente local seguro fora dessa restrição disponível para homologar WebSocket. |
+| Contrato OpenAPI e estilo | A versão da view é idêntica à verificada no schema. Google público, operações de senha com JWT e componentes de entrada e resposta presentes. Ruff check e format check aprovados. |
+| Configuração e migrations | `makemigrations --check --dry-run` passou sem mudanças. `check --deploy` sintético passou com oito avisos OpenAPI e dois HSTS, já descritos acima. |
+| Hospedagem | Sem acesso autorizado para confirmar PostgreSQL, Redis, HTTPS, CORS, autenticação, rotas, logs ou disponibilidade do serviço publicado. |
+
+A remoção do JWT no cliente foi coberta pela jornada. O backend não revoga
+um JWT já emitido apenas por logout local. Troca de senha, inativação e
+expiração têm testes próprios. Google, Cloudinary, Redis e Web Push usaram
+simulações nos testes aplicáveis.
+
+### Prioridade de segurança
+
+**Gravidade alta, com tratamento imediato pelos responsáveis.** O GitHub
+reconfirmou o repositório público. Os 19 caminhos em HEAD são o banco,
+o dump e 17 arquivos em `media/`. As referências locais registram 23
+commits que tocaram o banco, três que tocaram o dump e seis que tocaram
+mídia. Os indícios de dados reais descritos na revalidação anterior
+continuam aplicáveis à mesma revisão. O alcance potencial inclui acesso
+anônimo a versões públicas, clones, forks e cópias já obtidas. O número
+de terceiros que acessaram o conteúdo é desconhecido.
+
+O `.gitignore` agora cobre bancos SQLite com outros nomes, arquivos
+auxiliares, exports `.dump` e a pasta `backups/`, além de `dump.json`
+e `media/`. As regras foram verificadas com nomes sintéticos. Arquivos
+já rastreados continuam no índice e no histórico. Após autorização, os
+responsáveis devem preservar evidências sob acesso restrito, conter
+acesso público, avaliar a origem e as credenciais, retirar os artefatos
+do índice e decidir sobre tratamento do histórico e das cópias. Para
+evitar recorrência, um check obrigatório no PR pode rejeitar alterações
+em caminhos sensíveis já rastreados e a entrada de novos bancos, dumps e
+mídias privadas. Até esse controle existir, a revisão do diff continua
+necessária. Nenhum artefato foi excluído e a visibilidade foi preservada.
+
+**Classificação: APTO COM RESSALVAS.** O backend está apto para demonstração
+local dos fluxos REST aprovados com dados fictícios. A apresentação
+hospedada e o chat em tempo real não têm aceite nesta sessão. A indicação
+é aguardar o tratamento da exposição pública e um teste válido de
+WebSocket antes de abrir um PR de homologação. A collation PostgreSQL,
+a mídia legada, B55/B56 e as integrações externas seguem como pendências.
+
+## Fechamento e responsáveis pela entrega
+
+A comparação ao vivo reconfirmou a DEV em `9ba7651`. A branch de
+homologação está nessa base e tem somente três arquivos modificados na
+worktree: `.gitignore`, `core/views/user.py` e este relatório. O fetch
+voltou a falhar por DNS. O índice está limpo e o diff não inclui
+artefatos de dados, mídia ou segredos.
+
+Uma cópia temporária contendo somente código e configurações de teste,
+sem banco, dump ou mídia versionados, repetiu a seleção com **239
+aprovações**. Ela demonstrou que esses artefatos podem ser separados
+do código para os fluxos REST validados. Imagens para a apresentação
+devem ser fictícias. A geração do schema confirmou os três contratos
+OpenAPI, Ruff e o check de migrations passaram, e as regras de ignore
+foram verificadas por caminho. A reexecução de controle voltou a obter
+dois erros: EPERM no socket local e timeout no handshake anônimo
+WebSocket. Não há outra execução autorizada disponível nesta sessão
+para confirmar o WebSocket.
+
+| Responsável | Próxima ação |
+| --- | --- |
+| Proprietário do repositório e responsáveis por segurança e privacidade | Autorizar e coordenar a contenção do acesso público, preservar evidências em armazenamento restrito, determinar a origem dos dados e a extensão da exposição, e decidir revogação, redefinição de senhas ou rotação conforme a avaliação. |
+| Proprietário e mantenedores do Git | Autorizar a retirada dos 19 caminhos do índice mantendo cópias locais que precisem ser preservadas, substituir o material de demonstração por fixtures sintéticas e aprovar eventual intervenção coordenada no histórico, referências, forks e caches. O histórico pode continuar acessível por cópias já feitas. |
+| Equipe do backend | Reexecutar os 24 casos assíncronos em ambiente autorizado com comunicação local funcional antes do aceite do chat em tempo real. |
+| Responsável pela hospedagem | Identificar o serviço e conceder acesso de leitura para confirmação de HTTPS, disponibilidade, PostgreSQL, Redis, WebSocket, rotas e logs sanitizados. |
+
+O risco de exposição é bloqueador de publicação até avaliação e
+contenção pelos responsáveis. A apresentação local permanece apta para
+os fluxos REST validados. A hospedagem segue sem homologação e a
+recomendação é aguardar antes do PR e do merge de homologação.
