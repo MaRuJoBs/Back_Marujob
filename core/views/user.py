@@ -5,11 +5,12 @@ from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
 from google.auth.exceptions import GoogleAuthError, TransportError
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as APIValidationError
 from rest_framework.generics import CreateAPIView
@@ -29,6 +30,8 @@ from core.serializers import (
 from core.throttles import PasswordEndpointThrottle, SensitiveEndpointThrottle
 
 logger = logging.getLogger(__name__)
+
+password_success_schema = inline_serializer('PasswordChangeResult', fields={'detail': serializers.CharField()})
 
 
 class UserViewSet(ReadOnlyModelViewSet):
@@ -108,6 +111,34 @@ class GoogleLoginView(CreateAPIView):
         user.groups.add(group)
         return user
 
+    @extend_schema(
+        request=inline_serializer(
+            'GoogleLoginRequest',
+            fields={
+                'credential': serializers.CharField(write_only=True),
+                'tipo': serializers.ChoiceField(
+                    choices=['usuario', 'empresa'], required=False, help_text='Obrigatório quando cadastro é true.'
+                ),
+                'cadastro': serializers.BooleanField(default=False, help_text='Também aceita as strings true e false.'),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                'GoogleLoginResult',
+                fields={
+                    'access': serializers.CharField(),
+                    'refresh': serializers.CharField(),
+                    'user': UserSerializer(),
+                    'precisa_definir_senha': serializers.BooleanField(),
+                },
+            ),
+            400: OpenApiTypes.OBJECT,
+            401: OpenApiTypes.OBJECT,
+            404: OpenApiTypes.OBJECT,
+            429: OpenApiTypes.OBJECT,
+            503: OpenApiTypes.OBJECT,
+        },
+    )
     def post(self, request):  # noqa: PLR0911, PLR0912, PLR0915 -- preserve existing OAuth flow
         token = request.data.get('credential')
         tipo = request.data.get('tipo')
@@ -263,6 +294,18 @@ class DefinirSenhaView(CreateAPIView):
     permission_classes = [IsAuthenticated]
     throttle_classes = [PasswordEndpointThrottle]
 
+    @extend_schema(
+        request=inline_serializer(
+            'SetPasswordRequest',
+            fields={'senha': serializers.CharField(write_only=True, style={'input_type': 'password'})},
+        ),
+        responses={
+            200: password_success_schema,
+            400: OpenApiTypes.OBJECT,
+            401: OpenApiTypes.OBJECT,
+            429: OpenApiTypes.OBJECT,
+        },
+    )
     def post(self, request):
         if request.user.has_usable_password() or not request.user.google_id:
             return Response({'detail': 'Utilize a troca de senha com a senha atual.'}, status=400)
@@ -297,6 +340,21 @@ class TrocarSenhaView(CreateAPIView):
     permission_classes = [IsAuthenticated]
     throttle_classes = [PasswordEndpointThrottle]
 
+    @extend_schema(
+        request=inline_serializer(
+            'ChangePasswordRequest',
+            fields={
+                'senha_atual': serializers.CharField(write_only=True, style={'input_type': 'password'}),
+                'nova_senha': serializers.CharField(write_only=True, style={'input_type': 'password'}),
+            },
+        ),
+        responses={
+            200: password_success_schema,
+            400: OpenApiTypes.OBJECT,
+            401: OpenApiTypes.OBJECT,
+            429: OpenApiTypes.OBJECT,
+        },
+    )
     def post(self, request):
         senha_atual = request.data.get('senha_atual')
         nova_senha = request.data.get('nova_senha')

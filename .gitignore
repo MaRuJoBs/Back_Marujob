@@ -62,10 +62,19 @@ cover/
 # Django stuff:
 *.log
 local_settings.py
-db.sqlite3
+# Local databases, database exports, and private uploads
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-journal
+*.dump
 dump.json
+/backups/
 /media/
-db.sqlite3-journal
 
 # Flask stuff:
 instance/
